@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/Python-3.14-blue)
 ![XGBoost](https://img.shields.io/badge/XGBoost-3.2-orange)
 ![FastAPI](https://img.shields.io/badge/FastAPI-live-green)
-![Railway](https://img.shields.io/badge/Deployed-Railway-blueviolet)
+[![Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://ml-model-monitor.onrender.com)
 
 A production-grade ML monitoring system for credit card fraud detection. Automatically detects data drift, concept drift, and performance degradation — then retrains the model without human intervention.
 
