@@ -1029,7 +1029,7 @@ async function fetchOverview() {
 
   // Predictions
   try {
-    const res = await fetch(`${API}/predictions/recent?limit=20`, {signal: AbortSignal.timeout(5000)});
+    const res = await fetch(`${API}/predictions/recent?limit=1000000`, {signal: AbortSignal.timeout(5000)});
     const data = await res.json();
     const total = data.length, fraudN = data.filter(r => r.prediction === 1).length;
     const rate = total ? (fraudN / total * 100).toFixed(1) : '0';
@@ -1252,7 +1252,7 @@ function initConceptDriftChart(bins, refHist, prodHist) {
 // ━━━ LOAD PREDICTIONS PAGE ━━━
 async function loadPredictionsPage() {
   try {
-    const res = await fetch(`${API}/predictions/recent?limit=100`, {signal: AbortSignal.timeout(5000)});
+    const res = await fetch(`${API}/predictions/recent?limit=10000`, {signal: AbortSignal.timeout(5000)});
     const data = await res.json();
     const total = data.length, fraudN = data.filter(r => r.prediction === 1).length;
     document.getElementById('ps-total').textContent = total;
