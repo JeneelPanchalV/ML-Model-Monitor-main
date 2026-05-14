@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 from sklearn.preprocessing import StandardScaler
 
-API_URL = "http://localhost:8000/predict"
+API_URL = "https://ml-model-monitor.onrender.com/predict"
 DATA_PATH = "data/creditcard.csv"
 N = 50
 
