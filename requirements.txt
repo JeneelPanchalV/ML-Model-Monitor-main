@@ -13,3 +13,4 @@ sqlalchemy
 requests
 joblib
 imbalanced-learn
+psycopg2-binary
