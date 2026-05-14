@@ -13,3 +13,4 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+CMD ["uvicorn", "serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
