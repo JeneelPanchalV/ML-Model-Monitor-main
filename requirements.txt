@@ -1,0 +1,15 @@
+xgboost
+scikit-learn
+pandas
+numpy
+fastapi
+uvicorn[standard]
+python-multipart
+evidently
+streamlit
+apscheduler
+python-dotenv
+sqlalchemy
+requests
+joblib
+imbalanced-learn

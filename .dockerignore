@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git/
+data/creditcard.csv
+model/backups/
+monitoring_reports/
+monitoring/reports/
+*.db

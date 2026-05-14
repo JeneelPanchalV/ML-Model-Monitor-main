@@ -1,0 +1,63 @@
+services:
+  api:
+    build: .
+    command: python -m uvicorn serving.app:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./monitor.db:/app/monitor.db
+      - ./monitoring_reports:/app/monitoring_reports
+      - ./dashboard:/app/dashboard
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./monitor.db:/app/monitor.db
+      - ./monitoring/reports:/app/monitoring/reports
+      - ./monitoring_reports:/app/monitoring_reports
+    env_file:
+      - .env
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    command: python monitoring/scheduler.py
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./monitor.db:/app/monitor.db
+      - ./monitoring/reports:/app/monitoring/reports
+      - ./monitoring_reports:/app/monitoring_reports
+    env_file:
+      - .env
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  simulator:
+    build: .
+    command: python data/stream_predictions.py
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - API_URL=http://api:8000
+      - STREAM_INTERVAL=20
+      - STREAM_BATCH=15
+      - DRIFT_SPEED=0.003
+    depends_on:
+      - api
+    restart: unless-stopped

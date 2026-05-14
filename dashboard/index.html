@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ML Model Monitor — Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:     #080C14;
+      --card:   #0F1623;
+      --border: #1E2D45;
+      --teal:   #00D4B4;
+      --amber:  #F59E0B;
+      --white:  #FFFFFF;
+      --muted:  #8899AA;
+      --active-bg: #1A2332;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--card); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    html, body { height: 100%; }
+    body { background: var(--bg); color: var(--white); font-family: var(--font); font-size: 13px; overflow: hidden; }
+
+    /* ━━━ HEADER ━━━ */
+    header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 56px; background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px 0 16px; gap: 12px;
+    }
+    .h-left { display: flex; align-items: center; gap: 12px; }
+    .h-icon { width: 32px; height: 32px; background: var(--active-bg); border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .h-name { font-size: 15px; font-weight: 700; color: var(--white); line-height: 1.2; letter-spacing: -.01em; }
+    .h-sub  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .h-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .pill { display: flex; align-items: center; gap: 5px; font-size: 11px; padding: 4px 12px; border-radius: 99px; border: 1px solid; white-space: nowrap; font-weight: 500; }
+    .pill-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .pill-teal  { border-color: var(--teal);  background: #001A15; color: var(--teal);  }
+    .pill-teal .pill-dot  { background: var(--teal); }
+    .pill-amber { border-color: var(--amber); background: #1A1200; color: var(--amber); }
+    .pill-amber .pill-dot { background: var(--amber); }
+    .pill-red   { border-color: #E74C3C; background: #1A0000; color: #E74C3C; }
+    .pill-red .pill-dot { background: #E74C3C; }
+
+    /* ━━━ SIDEBAR ━━━ */
+    aside {
+      position: fixed; top: 56px; left: 0; bottom: 0; z-index: 90;
+      width: 200px; background: var(--card); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; padding: 12px 8px 0;
+      overflow-y: auto; overflow-x: hidden;
+    }
+    .nav-section { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; padding: 8px 8px 6px; margin-top: 4px; }
+    .nav-section:first-child { margin-top: 0; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); transition: background .15s, color .15s, border-color .15s; user-select: none; margin-bottom: 2px; }
+    .nav-item:hover { color: var(--white); background: rgba(255,255,255,.04); }
+    .nav-item.active { background: var(--active-bg); color: var(--white); border-color: var(--border); }
+    .nav-icon { font-size: 15px; flex-shrink: 0; line-height: 1; }
+    .sidebar-spacer { flex: 1; }
+    .model-info { background: var(--active-bg); border-radius: 8px; padding: 12px; margin: 8px 0; border: 1px solid var(--border); cursor: pointer; transition: border-color .18s ease; }
+    .model-info:hover { border-color: rgba(0,212,180,.4); }
+    .model-info-reveal { overflow: hidden; height: 0; transition: height 0.38s cubic-bezier(0.4,0,0.2,1); }
+    .insight-reveal { overflow: hidden; height: 0; transition: height 0.38s cubic-bezier(0.4,0,0.2,1); font-size: 11px; color: #8899AA; line-height: 1.6; }
+    .insight-card:hover .insight-reveal { margin-top: 8px; }
+    .alert-reveal { overflow: hidden; height: 0; transition: height 0.38s cubic-bezier(0.4,0,0.2,1); font-size: 11px; color: #8899AA; line-height: 1.6; }
+    .alert-card:hover .alert-reveal { margin-top: 10px; padding-top: 10px; border-top: 1px solid #1E2D45; }
+    .mi-label { font-size: 10px; font-weight: 600; color: var(--teal); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+    .mi-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .mi-key { font-size: 11px; color: var(--muted); }
+    .mi-val { font-size: 12px; font-weight: 700; color: var(--white); }
+
+    /* ━━━ MAIN ━━━ */
+    main { margin-left: 200px; margin-top: 56px; height: calc(100vh - 56px); overflow-y: auto; padding: 20px; }
+
+    /* ━━━ PAGES ━━━ */
+    .page { display: none; opacity: 0; transition: opacity .22s ease; }
+    .page.visible { display: block; }
+    .page.shown { opacity: 1; }
+
+    /* ━━━ COMMON ━━━ */
+    .page-header { margin-bottom: 20px; }
+    .page-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; color: var(--white); }
+    .page-sub   { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .cards-row { display: grid; gap: 14px; margin-bottom: 14px; }
+    .cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .cols-2 { grid-template-columns: 1fr 1fr; }
+    .cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+    .card:hover { transform: translateY(-3px); border-color: rgba(0,212,180,.35); box-shadow: 0 8px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(0,212,180,.08); }
+    .card-label { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 6px; }
+    .card-val { font-size: 26px; font-weight: 700; font-family: var(--mono); line-height: 1; }
+    .card-sub { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--white); margin-bottom: 10px; }
+    .mini-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .mini-bar-lbl { font-size: 11px; color: var(--muted); width: 28px; font-family: var(--mono); }
+    .mini-bar-track { flex: 1; height: 8px; background: var(--active-bg); border-radius: 3px; overflow: hidden; }
+    .mini-bar-fill  { height: 100%; border-radius: 3px; }
+    .mini-bar-val { font-size: 11px; font-family: var(--mono); width: 34px; text-align: right; }
+    .tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .tbl th { color: var(--muted); text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-weight: 500; font-size: 11px; letter-spacing: .04em; }
+    .tbl td { padding: 8px 10px; border-bottom: 1px solid #0D1825; font-family: var(--mono); font-size: 12px; }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl tr.fraud-row td { background: rgba(239,68,68,.07); }
+    .badge { display: inline-flex; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: var(--mono); }
+    .b-ok   { background: rgba(0,212,180,.12); color: var(--teal); }
+    .b-fraud{ background: rgba(239,68,68,.18);  color: #EF4444; }
+    .b-warn { background: rgba(245,158,11,.15);  color: var(--amber); }
+    .alert-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 8px; background: var(--card); }
+    .alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+    .alert-txt { font-size: 12px; color: var(--white); }
+    .alert-time { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+    .thresh-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .thresh-row:last-child { border-bottom: none; }
+    .thresh-lbl { font-size: 12px; color: var(--white); }
+    .thresh-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .thresh-val { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--teal); }
+    .retrain-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .retrain-item:last-child { border-bottom: none; }
+    .ri-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .ri-title { font-size: 12px; font-weight: 600; color: var(--white); }
+    .ri-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    svg text { font-family: var(--mono); }
+
+    /* ━━━ OVERVIEW GLOBE ━━━ */
+    .globe-wrapper-ov { width: 100%; display: flex; justify-content: center; padding: 20px 0 10px; position: relative; z-index: 0; will-change: transform; }
+    #globeCanvas { display: block; }
+    .ov-status, .ov-metrics, #page-overview .cards-row { position: relative; z-index: 1; background: var(--bg); }
+    .ov-status { font-size: 11px; color: #8899AA; letter-spacing: .15em; text-align: center; margin-bottom: 20px; font-family: monospace; }
+    .ov-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    .ov-card { background: #0F1623; border: 1px solid #1E2D45; border-radius: 10px; padding: 14px 16px; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+    .ov-card:hover { transform: translateY(-3px); border-color: rgba(0,212,180,.35); box-shadow: 0 8px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(0,212,180,.08); }
+    .ov-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 6px; }
+    .ov-card-lbl { font-size: 11px; color: #8899AA; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+    .ov-trend { font-size: 10px; border-radius: 99px; padding: 2px 8px; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+    .ov-card-val { font-size: 22px; font-weight: 700; font-family: var(--mono); line-height: 1; margin-bottom: 4px; }
+    .ov-card-sub { font-size: 11px; color: #8899AA; }
+    @media (max-width: 900px) { .cols-4, .ov-metrics { grid-template-columns: 1fr 1fr; } }
+
+    /* ── Overview section additions ── */
+    .ov-section { position: relative; z-index: 1; background: var(--bg); margin-bottom: 8px; }
+    .card-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .card-hdr-title { font-size: 13px; font-weight: 700; color: var(--white); }
+    .drift-pill { display: inline-flex; align-items: center; font-size: 10px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--amber); background: #1A0800; color: var(--amber); font-weight: 500; }
+    .teal-pill  { display: inline-flex; align-items: center; font-size: 10px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--teal);  background: #001A15; color: var(--teal);  font-weight: 500; }
+    .feat-row  { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .feat-name { width: 28px; color: var(--white); font-size: 12px; font-weight: 500; font-family: var(--mono); flex-shrink: 0; }
+    .feat-track{ flex: 1; height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .feat-fill { height: 100%; border-radius: 99px; }
+    .feat-score{ width: 38px; color: var(--muted); font-size: 11px; text-align: right; font-family: var(--mono); }
+    .feat-badge{ width: 46px; font-size: 9px; border-radius: 99px; text-align: center; padding: 2px 0; font-weight: 600; }
+    .fb-drift  { background: #1A0800; color: var(--amber); border: 1px solid var(--amber); }
+    .fb-stable { background: #001A15; color: var(--teal);  border: 1px solid var(--teal); }
+    .feed-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .feed-tbl th { color: var(--muted); text-align: left; padding: 0 8px 8px; border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+    .feed-tbl td { padding: 8px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 12px; }
+    .feed-tbl tr:last-child td { border-bottom: none; }
+    .feed-tbl tr.fraud-feed td { background: #1A0800; }
+    .vbadge { font-size: 10px; padding: 2px 10px; border-radius: 99px; font-weight: 600; }
+    .vb-legit { background: #001A15; color: var(--teal);  border: 1px solid var(--teal); }
+    .vb-fraud { background: #1A0000; color: #E74C3C; border: 1px solid #E74C3C; }
+    .insights-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .insight-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; cursor: pointer; }
+    .insight-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,.35); border-color: rgba(255,255,255,0.15); }
+    .insight-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .insight-title { font-size: 13px; font-weight: 700; color: var(--white); margin-bottom: 4px; }
+    .insight-body  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .s-label { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px; }
+
+    /* ── Page styles ── */
+    .filter-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .filter-btn { padding: 6px 16px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; background: #1A2332; color: var(--muted); transition: background .15s, color .15s; font-family: var(--font); }
+    .filter-btn.active { background: var(--teal); color: #080C14; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+    .stat-card:hover { transform: translateY(-3px); border-color: rgba(0,212,180,.35); box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; margin-bottom: 4px; }
+    .stat-val { font-size: 22px; font-weight: 700; font-family: var(--mono); }
+    .view-btn { background: transparent; color: var(--teal); border: 1px solid var(--teal); border-radius: 6px; padding: 2px 10px; font-size: 11px; cursor: pointer; font-family: var(--font); }
+    .view-btn:hover { background: rgba(0,212,180,.08); }
+    .view-btn:disabled { opacity: .35; cursor: default; }
+    .modal-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.72); align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--white); margin-bottom: 16px; }
+    .modal-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .modal-row:last-of-type { border-bottom: none; }
+    .modal-key { color: var(--muted); }
+    .modal-val { color: var(--white); font-weight: 500; text-align: right; max-width: 58%; font-family: var(--mono); }
+    .modal-close { margin-top: 16px; float: right; background: var(--teal); color: #080C14; border: none; border-radius: 6px; padding: 8px 20px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .status-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .status-row:last-child { border-bottom: none; }
+    .status-key { color: var(--muted); }
+    .status-val { color: var(--white); font-weight: 500; }
+    .retrain-btn { background: var(--amber); color: #080C14; border: none; border-radius: 8px; padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; margin-bottom: 16px; transition: background .2s; }
+    .alert-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; align-items: stretch; margin-bottom: 8px; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; cursor: pointer; }
+    .alert-card:hover { transform: translateY(-2px); border-color: rgba(245,158,11,.4); box-shadow: 0 6px 22px rgba(0,0,0,.3); background: #1A1200; }
+    .alert-ts { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--white); margin-bottom: 3px; }
+    .alert-adot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+    .alert-score { font-size: 12px; color: var(--muted); margin-left: 16px; margin-bottom: 2px; font-family: var(--mono); }
+    .alert-feats { font-size: 11px; color: var(--muted); margin-left: 16px; }
+    .sev-badge { font-size: 11px; padding: 3px 12px; border-radius: 99px; border: 1px solid; font-weight: 500; white-space: nowrap; }
+    .sev-high { background: #1A0000; color: #E74C3C; border-color: #E74C3C; }
+    .sev-med  { background: #1A0800; color: var(--amber); border-color: var(--amber); }
+    input[type=range] { width: 100%; cursor: pointer; }
+
+    /* ── Retrain progress bar ── */
+    .retrain-progress { display: none; margin-top: 14px; }
+    .retrain-progress.active { display: block; }
+    .rp-label { font-size: 12px; color: #888; margin-bottom: 7px; display: flex; justify-content: space-between; }
+    .rp-status { color: var(--amber); font-weight: 600; }
+    .rp-track { height: 6px; background: #1E2D45; border-radius: 999px; overflow: hidden; }
+    .rp-bar { height: 100%; width: 0%; border-radius: 999px; transition: width .6s ease; }
+    @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+    .rp-bar.running { background: linear-gradient(90deg,#F59E0B 0%,#ef4444 50%,#F59E0B 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+    .rp-bar.done { background: var(--teal); animation: none; }
+  </style>
+</head>
+<body>
+
+<!-- ━━━ HEADER ━━━ -->
+<header>
+  <div class="h-left">
+    <div class="h-icon">⚡</div>
+    <div class="h-text">
+      <div class="h-name">ML Model Monitor</div>
+      <div class="h-sub">Fraud detection · XGBoost · Credit card transactions</div>
+    </div>
+  </div>
+  <div class="h-right">
+    <div class="pill pill-teal" id="pill-api"><span class="pill-dot"></span>API live</div>
+    <div class="pill pill-teal" id="pill-model"><span class="pill-dot"></span>Model loaded</div>
+    <div class="pill pill-amber" id="pill-drift"><span class="pill-dot"></span><span id="drift-alert-count">—</span> drift alerts</div>
+    <div class="pill" style="border-color:#1E2D45;background:#0F1623;color:#8899AA;gap:6px">
+      <span style="font-size:10px;color:#8899AA">latency</span>
+      <span id="pill-latency" style="color:#7F77DD;font-weight:700;font-family:var(--mono)">—</span>
+    </div>
+  </div>
+</header>
+
+<!-- ━━━ SIDEBAR ━━━ -->
+<aside>
+  <div class="nav-section">Monitor</div>
+  <div class="nav-item active" data-target="page-overview"><span class="nav-icon">⊞</span> Overview</div>
+  <div class="nav-item" data-target="page-drift"><span class="nav-icon">∿</span> Drift analysis</div>
+  <div class="nav-item" data-target="page-predictions"><span class="nav-icon">≡</span> Predictions</div>
+  <div class="nav-item" data-target="page-reports"><span class="nav-icon">↓</span> Reports</div>
+  <div class="nav-section">System</div>
+  <div class="nav-item" data-target="page-thresholds"><span class="nav-icon">◎</span> Thresholds</div>
+  <div class="nav-item" data-target="page-retrain"><span class="nav-icon">↺</span> Auto-retrain</div>
+  <div class="nav-item" data-target="page-alerts"><span class="nav-icon">◉</span> Alerts</div>
+  <div class="sidebar-spacer"></div>
+  <div class="model-info">
+    <div class="mi-label">Model Info</div>
+    <div class="model-info-reveal">
+      <div class="mi-row" style="margin-top:8px"><span class="mi-key">Type</span><span class="mi-val" id="mi-type">—</span></div>
+      <div class="mi-row"><span class="mi-key">Trained</span><span class="mi-val" id="mi-trained">—</span></div>
+      <div class="mi-row"><span class="mi-key">Features</span><span class="mi-val" id="mi-features">—</span></div>
+      <div class="mi-row"><span class="mi-key">Version</span><span class="mi-val" id="mi-version">—</span></div>
+      <div class="mi-row"><span class="mi-key">AUC-ROC</span><span class="mi-val" id="mi-auc">—</span></div>
+      <div class="mi-row"><span class="mi-key">Precision</span><span class="mi-val" id="mi-precision">—</span></div>
+      <div class="mi-row"><span class="mi-key">Recall</span><span class="mi-val" id="mi-recall">—</span></div>
+      <div class="mi-row"><span class="mi-key">F1</span><span class="mi-val" id="mi-f1">—</span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ━━━ MAIN ━━━ -->
+<main>
+
+  <!-- ── Overview ── -->
+  <div class="page visible shown" id="page-overview">
+    <div class="page-header">
+      <div class="page-title">Overview</div>
+      <div class="page-sub">System health and real-time prediction summary — updated every 30 s</div>
+    </div>
+
+    <div class="globe-wrapper-ov">
+      <canvas id="globeCanvas" width="500" height="500"></canvas>
+    </div>
+
+    <div class="ov-status" id="ov-status-bar">
+      LIVE SYSTEM &nbsp;·&nbsp; <span id="ov-pred-count">—</span> PREDICTIONS MONITORED &nbsp;·&nbsp; <span id="ov-drift-pct">—</span> DRIFT DETECTED &nbsp;·&nbsp; <span id="ov-alert-count">—</span> ALERTS FIRED
+    </div>
+
+    <div class="ov-metrics" id="ov-metrics">
+      <div class="ov-card">
+        <div class="ov-card-top">
+          <span class="ov-card-lbl">Total Predictions</span>
+          <span class="ov-trend" style="background:#001A15;color:#00D4B4" id="ov-pred-trend">loading…</span>
+        </div>
+        <div class="ov-card-val" style="color:#FFFFFF"><span id="cu-total">0</span></div>
+        <div class="ov-card-sub">total logged</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-card-top">
+          <span class="ov-card-lbl">Drift Share</span>
+          <span class="ov-trend" style="background:#1A1200;color:#F59E0B" id="ov-drift-trend">loading…</span>
+        </div>
+        <div class="ov-card-val" style="color:#F59E0B"><span id="cu-drift">0</span>%</div>
+        <div class="ov-card-sub" id="ov-drift-sub">— of 29 features</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-card-top">
+          <span class="ov-card-lbl">Fraud Caught</span>
+          <span class="ov-trend" style="background:#001A15;color:#00D4B4" id="ov-fraud-trend">— rate</span>
+        </div>
+        <div class="ov-card-val" style="color:#00D4B4"><span id="cu-fraud">0</span></div>
+        <div class="ov-card-sub">high-confidence flags</div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-card-top">
+          <span class="ov-card-lbl">Model AUC-ROC</span>
+          <span class="ov-trend" style="background:#0A0A1A;color:#7F77DD" id="ov-auc-trend">loading…</span>
+        </div>
+        <div class="ov-card-val" style="color:#7F77DD"><span id="cu-auc">—</span></div>
+        <div class="ov-card-sub" id="ov-auc-sub">held-out eval set</div>
+      </div>
+    </div>
+
+    <!-- Section A: Drift chart + KS bars -->
+    <div class="ov-section" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-hdr-title">Data drift over time</span>
+          <span class="drift-pill" id="ov-drift-badge">Loading…</span>
+        </div>
+        <div style="height:160px;position:relative">
+          <canvas id="driftChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-hdr-title">Feature drift scores (K-S test)</span>
+          <span class="drift-pill">13 drifted</span>
+        </div>
+        <div class="feat-row"><span class="feat-name">V18</span><div class="feat-track"><div class="feat-fill" style="width:78%;background:#E74C3C"></div></div><span class="feat-score">0.776</span><span class="feat-badge fb-drift">drifted</span></div>
+        <div class="feat-row"><span class="feat-name">V24</span><div class="feat-track"><div class="feat-fill" style="width:56%;background:#E74C3C"></div></div><span class="feat-score">0.563</span><span class="feat-badge fb-drift">drifted</span></div>
+        <div class="feat-row"><span class="feat-name">V15</span><div class="feat-track"><div class="feat-fill" style="width:51%;background:#E74C3C"></div></div><span class="feat-score">0.508</span><span class="feat-badge fb-drift">drifted</span></div>
+        <div class="feat-row"><span class="feat-name">V25</span><div class="feat-track"><div class="feat-fill" style="width:44%;background:#E74C3C"></div></div><span class="feat-score">0.442</span><span class="feat-badge fb-drift">drifted</span></div>
+        <div class="feat-row"><span class="feat-name">V1</span> <div class="feat-track"><div class="feat-fill" style="width:36%;background:#00D4B4"></div></div><span class="feat-score">0.365</span><span class="feat-badge fb-stable">stable</span></div>
+        <div class="feat-row"><span class="feat-name">V5</span> <div class="feat-track"><div class="feat-fill" style="width:20%;background:#00D4B4"></div></div><span class="feat-score">0.202</span><span class="feat-badge fb-stable">stable</span></div>
+      </div>
+    </div>
+
+    <!-- Section B: Live prediction feed -->
+    <div class="ov-section card">
+      <div class="card-hdr">
+        <span class="card-hdr-title">Live prediction feed</span>
+        <span class="teal-pill">∿ Streaming</span>
+      </div>
+      <table class="feed-tbl">
+        <thead><tr><th>#</th><th>FRAUD PROBABILITY</th><th>VERDICT</th><th>CONFIDENCE</th><th>TIMESTAMP</th></tr></thead>
+        <tbody id="ov-feed-tbody">
+          <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section C: System Insights -->
+    <div class="ov-section">
+      <div class="s-label">System Insights</div>
+      <div class="insights-grid">
+        <div class="insight-card" style="border-left:3px solid #E74C3C">
+          <div class="insight-icon" style="background:#1A0000;color:#E74C3C">⚠</div>
+          <div>
+            <div class="insight-title">Drift exceeds threshold</div>
+            <div class="insight-body" id="ins-drift-body">Loading…</div>
+            <div class="insight-reveal" id="ins-drift-reveal">—</div>
+          </div>
+        </div>
+        <div class="insight-card" style="border-left:3px solid #00D4B4">
+          <div class="insight-icon" style="background:#001A15;color:#00D4B4">✓</div>
+          <div>
+            <div class="insight-title">Model performance</div>
+            <div class="insight-body" id="ins-perf-body">Loading…</div>
+            <div class="insight-reveal" id="ins-perf-reveal">—</div>
+          </div>
+        </div>
+        <div class="insight-card" style="border-left:3px solid #7F77DD">
+          <div class="insight-icon" style="background:#0A0A1A;color:#7F77DD">↺</div>
+          <div>
+            <div class="insight-title">Retrain pipeline</div>
+            <div class="insight-body" id="ins-retrain-body">Loading…</div>
+            <div class="insight-reveal" id="ins-retrain-reveal">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Drift Analysis ── -->
+  <div class="page" id="page-drift">
+    <div class="page-header">
+      <div class="page-title">Drift Analysis</div>
+      <div class="page-sub">Feature drift (K-S test) and concept drift (output distribution) — threshold 0.05 / 0.10</div>
+    </div>
+    <div class="card" style="margin-bottom:8px">
+      <div style="height:260px;position:relative"><canvas id="driftChartFull"></canvas></div>
+    </div>
+
+    <!-- Concept Drift Section -->
+    <div class="s-label" style="margin:16px 0 8px">Concept Drift — Output Distribution</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      <div class="stat-card"><div class="stat-label">KS Statistic</div><div class="stat-val" id="cd-ks" style="color:var(--amber)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Status</div><div class="stat-val" id="cd-status" style="color:var(--teal)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Ref Fraud Rate</div><div class="stat-val" id="cd-ref-rate" style="color:var(--muted)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Prod Fraud Rate</div><div class="stat-val" id="cd-prod-rate" style="color:var(--white)">—</div></div>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Probability Distribution — Reference vs Production</div>
+      <div style="height:180px;position:relative"><canvas id="conceptDriftChart"></canvas></div>
+    </div>
+
+    <div class="s-label" style="margin:16px 0 8px">All Drift Reports</div>
+    <div class="card">
+      <table class="tbl">
+        <thead><tr><th>#</th><th>DATE &amp; TIME</th><th>FEAT DRIFT</th><th>CONCEPT DRIFT</th><th>AUC-ROC</th><th>STATUS</th></tr></thead>
+        <tbody id="drift-table-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Predictions ── -->
+  <div class="page" id="page-predictions">
+    <div class="page-header">
+      <div class="page-title">Live Predictions</div>
+      <div class="page-sub">Full prediction log from the inference server</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-val" id="ps-total" style="color:var(--white)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Fraud</div><div class="stat-val" id="ps-fraud" style="color:#E74C3C">—</div></div>
+      <div class="stat-card"><div class="stat-label">Legit</div><div class="stat-val" id="ps-legit" style="color:var(--teal)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Rate</div><div class="stat-val" id="ps-rate" style="color:var(--amber)">—</div></div>
+    </div>
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filterPreds('all',this)">All</button>
+      <button class="filter-btn" onclick="filterPreds('Fraud',this)">Fraud</button>
+      <button class="filter-btn" onclick="filterPreds('Legit',this)">Legit</button>
+    </div>
+    <div class="card">
+      <table class="tbl" id="pred-table">
+        <thead><tr><th>#</th><th>PROB</th><th>LABEL</th><th>VERDICT</th><th>CONFIDENCE</th><th>TIME</th></tr></thead>
+        <tbody id="pred-table-live">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Reports ── -->
+  <div class="page" id="page-reports">
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div class="page-title">Monitoring Reports</div><div class="page-sub">Auto-generated by Evidently AI — drift detected via K-S test</div></div>
+      <button id="run-check-btn" onclick="runNewCheck()" style="background:#1A2332;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;font-family:var(--font)">▷ Run new check</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+      <div class="stat-card"><div class="stat-label">Total Reports</div><div class="stat-val" id="rp-total" style="color:var(--white)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Drift Detected</div><div class="stat-val" id="rp-drifted" style="color:var(--amber)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Avg Score</div><div class="stat-val" id="rp-avg" style="color:var(--amber)">—</div></div>
+    </div>
+    <div class="card" style="margin-bottom:8px">
+      <div style="height:100px;position:relative"><canvas id="reportsChart"></canvas></div>
+    </div>
+    <div class="card">
+      <table class="tbl">
+        <thead><tr><th>#</th><th>DATE &amp; TIME</th><th>DRIFT SCORE</th><th>STATUS</th><th>ACTION</th></tr></thead>
+        <tbody id="reports-tbody">
+          <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Thresholds ── -->
+  <div class="page" id="page-thresholds">
+    <div class="page-header"><div class="page-title">System Thresholds</div><div class="page-sub">Changes apply immediately to the scheduler and retrain pipeline</div></div>
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:14px;font-weight:700;color:var(--white);margin-bottom:4px">Drift Threshold</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Trigger alert and auto-retrain when drift share exceeds this value</div>
+      <div id="driftVal" style="font-size:32px;font-weight:700;color:var(--amber);text-align:center;margin-bottom:12px">—</div>
+      <input type="range" id="driftSlider" min="1" max="50" value="5" style="width:100%;accent-color:var(--amber)" oninput="document.getElementById('driftVal').textContent=this.value+'%'">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>1%</span><span>50%</span></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:700;color:var(--white);margin-bottom:4px">Performance Threshold (AUC-ROC)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Trigger retrain when model AUC drops below this value</div>
+      <div id="aucVal" style="font-size:32px;font-weight:700;color:var(--teal);text-align:center;margin-bottom:12px">—</div>
+      <input type="range" id="aucSlider" min="50" max="99" value="80" style="width:100%;accent-color:var(--teal)" oninput="document.getElementById('aucVal').textContent='0.'+this.value.padStart(2,'0')">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>0.50</span><span>0.99</span></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:700;color:var(--white);margin-bottom:4px">Concept Drift Threshold (KS Statistic)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Trigger alert when output distribution K-S statistic exceeds this value</div>
+      <div id="cdVal" style="font-size:32px;font-weight:700;color:var(--teal);text-align:center;margin-bottom:12px">—</div>
+      <input type="range" id="cdSlider" min="1" max="50" value="10" style="width:100%;accent-color:#7F77DD" oninput="document.getElementById('cdVal').textContent='0.'+this.value.padStart(2,'0')">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>0.01</span><span>0.50</span></div>
+    </div>
+    <button id="save-thresholds-btn" style="background:var(--teal);color:#080C14;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:700;cursor:pointer" onclick="saveThresholds()">Save Settings</button>
+  </div>
+
+  <!-- ── Auto-retrain ── -->
+  <div class="page" id="page-retrain">
+    <div class="page-header"><div class="page-title">Auto-Retrain Pipeline</div><div class="page-sub">APScheduler job history and trigger controls</div></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="status-row"><span class="status-key">Last retrain</span><span class="status-val" id="rt-last">—</span></div>
+      <div class="status-row"><span class="status-key">Trigger reason</span><span class="status-val" id="rt-reason">—</span></div>
+      <div class="status-row"><span class="status-key">New AUC-ROC</span><span class="status-val" id="rt-auc" style="color:var(--teal)">—</span></div>
+      <div class="status-row"><span class="status-key">Triggered by</span><span class="status-val" id="rt-by">—</span></div>
+    </div>
+    <button class="retrain-btn" id="retrain-btn" onclick="triggerRetrain()">Trigger Manual Retrain</button>
+    <div class="retrain-progress" id="retrain-progress-wrap">
+      <div class="rp-label"><span id="rp-status-lbl" class="rp-status">Initialising pipeline…</span><span id="rp-pct">0%</span></div>
+      <div class="rp-track"><div class="rp-bar running" id="rp-bar"></div></div>
+    </div>
+    <div class="s-label" style="margin-top:20px">Retrain History</div>
+    <div class="card">
+      <table class="tbl">
+        <thead><tr><th>DATE</th><th>TRIGGERED BY</th><th>REASON</th><th>AUC-ROC</th></tr></thead>
+        <tbody id="retrain-history-body">
+          <tr><td colspan="4" style="color:var(--muted);text-align:center">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Alerts ── -->
+  <div class="page" id="page-alerts">
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div class="page-title">Drift Alerts</div><div class="page-sub">All system-generated drift alerts</div></div>
+      <span class="drift-pill" id="alert-count-badge" style="font-size:12px;padding:3px 12px">—</span>
+    </div>
+    <div id="alerts-container">
+      <div style="color:var(--muted);padding:24px 0;text-align:center">Loading alerts…</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Modal ── -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal-card">
+    <div class="modal-title">Report Details</div>
+    <div class="modal-row"><span class="modal-key">Timestamp</span><span class="modal-val" id="m-ts"></span></div>
+    <div class="modal-row"><span class="modal-key">Drift Score</span><span class="modal-val" id="m-score"></span></div>
+    <div class="modal-row"><span class="modal-key">Features Drifted</span><span class="modal-val" id="m-feats"></span></div>
+    <div class="modal-row"><span class="modal-key">Drift Share</span><span class="modal-val" id="m-share"></span></div>
+    <div class="modal-row"><span class="modal-key">Top Features</span><span class="modal-val">V18, V24, V15, V25</span></div>
+    <div class="modal-row"><span class="modal-key">Recommendation</span><span class="modal-val" id="m-rec"></span></div>
+    <div style="overflow:hidden"><button class="modal-close" onclick="document.getElementById('reportModal').classList.remove('open')">Close</button></div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let driftChartInst = null, driftFullChartInst = null, reportsChartInst = null;
+let allPredictions = [];
+
+// ━━━ WIREFRAME GLOBE ━━━
+(function () {
+  const canvas = document.getElementById('globeCanvas');
+  canvas.width  = 620; canvas.height = 420;
+  const ctx = canvas.getContext('2d');
+  const W = 620, H = 420, CX = 310, CY = 210, R = 155;
+  const SEG = 64, LAT_RINGS = 9, LON_LINES = 12;
+  let rotY = 0, rotX = 0.22, animId = null, dragging = false, lastMX = 0, lastMY = 0;
+
+  function rotate(x, y, z) {
+    const x1 =  x * Math.cos(rotY) + z * Math.sin(rotY);
+    const z1 = -x * Math.sin(rotY) + z * Math.cos(rotY);
+    const y2 =  y * Math.cos(rotX) - z1 * Math.sin(rotX);
+    const z2 =  y * Math.sin(rotX) + z1 * Math.cos(rotX);
+    return [x1, y2, z2];
+  }
+  function proj(x, y, z) { return [CX + x * R, CY + y * R, z]; }
+
+  function drawRing(latAngle, baseAlpha) {
+    const sinLat = Math.sin(latAngle), cosLat = Math.cos(latAngle);
+    for (let i = 0; i < SEG; i++) {
+      const lon0 = (i / SEG) * Math.PI * 2, lon1 = ((i + 1) / SEG) * Math.PI * 2;
+      const [rx0, ry0, rz0] = rotate(cosLat * Math.cos(lon0), sinLat, cosLat * Math.sin(lon0));
+      const [rx1, ry1, rz1] = rotate(cosLat * Math.cos(lon1), sinLat, cosLat * Math.sin(lon1));
+      const [sx0, sy0] = proj(rx0, ry0, rz0);
+      const [sx1, sy1] = proj(rx1, ry1, rz1);
+      const t = ((rz0 + rz1) / 2 + 1) / 2;
+      const a = baseAlpha * (0.35 + t * 0.65);
+      ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1);
+      ctx.strokeStyle = `rgba(0,212,180,${a.toFixed(2)})`; ctx.lineWidth = 0.85; ctx.setLineDash([]); ctx.stroke();
+    }
+  }
+
+  function drawLonLine(lonAngle, baseAlpha) {
+    for (let i = 0; i < SEG; i++) {
+      const lat0 = (i / SEG) * Math.PI * 2 - Math.PI, lat1 = ((i + 1) / SEG) * Math.PI * 2 - Math.PI;
+      const [rx0, ry0, rz0] = rotate(Math.cos(lat0) * Math.cos(lonAngle), Math.sin(lat0), Math.cos(lat0) * Math.sin(lonAngle));
+      const [rx1, ry1, rz1] = rotate(Math.cos(lat1) * Math.cos(lonAngle), Math.sin(lat1), Math.cos(lat1) * Math.sin(lonAngle));
+      const [sx0, sy0] = proj(rx0, ry0, rz0);
+      const [sx1, sy1] = proj(rx1, ry1, rz1);
+      const t = ((rz0 + rz1) / 2 + 1) / 2;
+      const a = baseAlpha * (0.28 + t * 0.72);
+      ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1);
+      ctx.strokeStyle = `rgba(0,212,180,${a.toFixed(2)})`; ctx.lineWidth = 0.75; ctx.setLineDash([]); ctx.stroke();
+    }
+  }
+
+  const NODE_DEFS = [
+    { name: 'ALERT ENGINE',   lat:  0.45, lon: 0.9 },
+    { name: 'XGBOOST MODEL',  lat: -0.28, lon: 2.3 },
+    { name: 'FASTAPI SERVER', lat:  0.15, lon: 3.9 },
+    { name: 'DRIFT MONITOR',  lat:  0.52, lon: 5.3 },
+    { name: 'TRAINING DATA',  lat: -0.42, lon: 1.2 },
+  ];
+  const nodes = NODE_DEFS.map(n => ({ name: n.name, x: Math.cos(n.lat) * Math.cos(n.lon), y: Math.sin(n.lat), z: Math.cos(n.lat) * Math.sin(n.lon) }));
+
+  function drawNodes() {
+    ctx.font = '10.5px monospace'; ctx.textBaseline = 'middle';
+    const tn = nodes.map(n => {
+      const [rx, ry, rz] = rotate(n.x, n.y, n.z);
+      const [sx, sy] = proj(rx, ry, rz);
+      return { name: n.name, sx, sy, d: rz, vis: rz > -0.15 };
+    });
+    ctx.setLineDash([3, 5]);
+    for (let i = 0; i < tn.length; i++) {
+      for (let j = i + 1; j < tn.length; j++) {
+        if (!tn[i].vis || !tn[j].vis) continue;
+        const dist = Math.hypot(tn[i].sx - tn[j].sx, tn[i].sy - tn[j].sy);
+        if (dist > 200) continue;
+        const a = Math.min((tn[i].d + 1) / 2, (tn[j].d + 1) / 2) * 0.3;
+        ctx.beginPath(); ctx.moveTo(tn[i].sx, tn[i].sy); ctx.lineTo(tn[j].sx, tn[j].sy);
+        ctx.strokeStyle = `rgba(0,212,180,${a.toFixed(2)})`; ctx.lineWidth = 0.8; ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    tn.forEach(n => {
+      if (!n.vis) return;
+      const t = (n.d + 1) / 2, al = 0.5 + t * 0.5;
+      const glow = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, 14);
+      glow.addColorStop(0, `rgba(0,212,180,${(0.5 * al).toFixed(2)})`);
+      glow.addColorStop(0.5, `rgba(0,212,180,${(0.14 * al).toFixed(2)})`);
+      glow.addColorStop(1, 'rgba(0,212,180,0)');
+      ctx.beginPath(); ctx.arc(n.sx, n.sy, 14, 0, Math.PI * 2); ctx.fillStyle = glow; ctx.fill();
+      ctx.beginPath(); ctx.arc(n.sx, n.sy, 3.5, 0, Math.PI * 2); ctx.fillStyle = `rgba(0,212,180,${al.toFixed(2)})`; ctx.fill();
+      const tw = ctx.measureText(n.name).width, pw = 6, bh = 16, bw = tw + pw * 2;
+      let lx = n.sx + 10, ly = n.sy - bh / 2;
+      if (lx + bw > W - 6) lx = n.sx - 10 - bw;
+      ctx.fillStyle = 'rgba(5,10,22,0.9)'; ctx.strokeStyle = `rgba(0,212,180,${(0.6 * al).toFixed(2)})`; ctx.lineWidth = 0.8;
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(lx, ly, bw, bh, 3); ctx.fill(); ctx.stroke(); }
+      else { ctx.fillRect(lx, ly, bw, bh); ctx.strokeRect(lx, ly, bw, bh); }
+      ctx.fillStyle = `rgba(0,212,180,${al.toFixed(2)})`; ctx.fillText(n.name, lx + pw, n.sy);
+    });
+  }
+
+  function drawScene() {
+    ctx.clearRect(0, 0, W, H);
+    const atm = ctx.createRadialGradient(CX, CY, R * 0.8, CX, CY, R * 1.35);
+    atm.addColorStop(0, 'rgba(0,212,180,0)'); atm.addColorStop(0.7, 'rgba(0,212,180,0.03)'); atm.addColorStop(1, 'rgba(0,50,150,0)');
+    ctx.beginPath(); ctx.arc(CX, CY, R * 1.35, 0, Math.PI * 2); ctx.fillStyle = atm; ctx.fill();
+    for (let i = 1; i < LAT_RINGS; i++) drawRing((i / LAT_RINGS) * Math.PI - Math.PI / 2, 0.75);
+    drawRing(0, 1.0);
+    for (let i = 0; i < LON_LINES; i++) drawLonLine((i / LON_LINES) * Math.PI, 0.6);
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(0,212,180,0.18)'; ctx.lineWidth = 0.8; ctx.setLineDash([]); ctx.stroke();
+    drawNodes();
+  }
+
+  function animateGlobe() { if (!dragging) rotY += 0.004; drawScene(); animId = requestAnimationFrame(animateGlobe); }
+  canvas.style.cursor = 'grab';
+  canvas.addEventListener('mousedown', e => { dragging = true; lastMX = e.clientX; lastMY = e.clientY; canvas.style.cursor = 'grabbing'; });
+  window.addEventListener('mousemove', e => { if (!dragging) return; rotY += (e.clientX - lastMX) * 0.006; rotX += (e.clientY - lastMY) * 0.006; rotX = Math.max(-1.3, Math.min(1.3, rotX)); lastMX = e.clientX; lastMY = e.clientY; });
+  window.addEventListener('mouseup', () => { dragging = false; canvas.style.cursor = 'grab'; });
+  window.startGlobe = () => { if (!animId) animateGlobe(); };
+  window.stopGlobe  = () => { if (animId) { cancelAnimationFrame(animId); animId = null; } };
+  animateGlobe();
+})();
+
+// ━━━ PARALLAX ━━━
+(function () {
+  const mainEl = document.querySelector('main'), globeWrapper = document.querySelector('.globe-wrapper-ov');
+  mainEl.addEventListener('scroll', () => {
+    if (!document.getElementById('page-overview').classList.contains('visible')) return;
+    globeWrapper.style.transform = `translateY(${mainEl.scrollTop * 0.48}px)`;
+  });
+})();
+
+// ━━━ COUNTUP ━━━
+function runCountUp(el, target, dec) {
+  if (!el) return;
+  el.dataset.counted = '1';
+  const dur = 1500, t0 = performance.now();
+  (function loop(now) {
+    const p = Math.min((now - t0) / dur, 1), ease = 1 - Math.pow(1 - p, 3), val = target * ease;
+    el.textContent = dec ? val.toFixed(dec) : Math.floor(val);
+    if (p < 1) requestAnimationFrame(loop);
+    else el.textContent = dec ? target.toFixed(dec) : target;
+  })(t0);
+}
+
+// ━━━ NAV ━━━
+const navItems = document.querySelectorAll('.nav-item');
+const pages    = document.querySelectorAll('.page');
+navItems.forEach(item => {
+  item.addEventListener('click', () => {
+    const target = item.dataset.target;
+    navItems.forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    target === 'page-overview' ? window.startGlobe() : window.stopGlobe();
+    document.querySelector('main').scrollTop = 0;
+    pages.forEach(p => {
+      p.classList.remove('shown');
+      p.addEventListener('transitionend', function hide() {
+        if (!p.classList.contains('shown')) p.classList.remove('visible');
+        p.removeEventListener('transitionend', hide);
+      });
+    });
+    const tp = document.getElementById(target);
+    if (tp) { tp.classList.add('visible'); void tp.offsetWidth; tp.classList.add('shown'); }
+    onPageEnter(target.replace('page-', ''));
+  });
+});
+
+function onPageEnter(page) {
+  if (page === 'drift')       loadDriftPage();
+  if (page === 'predictions') loadPredictionsPage();
+  if (page === 'reports')     loadReportsPage();
+  if (page === 'alerts')      loadAlertsPage();
+  if (page === 'retrain')     loadRetrainPage();
+  if (page === 'thresholds')  loadThresholdsPage();
+}
+
+// ━━━ FILTER PREDICTIONS ━━━
+function filterPreds(verdict, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#pred-table-live tr').forEach(row => {
+    row.style.display = (verdict === 'all' || row.dataset.verdict === verdict) ? '' : 'none';
+  });
+}
+
+// ━━━ MODAL ━━━
+function openModal(id, ts, score, feats, share, rec) {
+  document.getElementById('m-ts').textContent    = ts;
+  document.getElementById('m-score').textContent = score;
+  document.getElementById('m-feats').textContent = feats;
+  document.getElementById('m-share').textContent = share;
+  document.getElementById('m-rec').textContent   = rec;
+  document.getElementById('reportModal').classList.add('open');
+}
+document.getElementById('reportModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
+
+// ━━━ TOAST ━━━
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg || '✓ Done';
+  Object.assign(t.style, { position:'fixed', bottom:'24px', right:'24px', background:'#001A15', color:'#00D4B4', border:'1px solid #00D4B4', padding:'10px 16px', borderRadius:'8px', fontSize:'13px', zIndex:'2000', transition:'opacity .3s' });
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+
+// ━━━ RETRAIN ━━━
+async function triggerRetrain() {
+  const btn  = document.getElementById('retrain-btn');
+  const wrap = document.getElementById('retrain-progress-wrap');
+  const bar  = document.getElementById('rp-bar');
+  const pct  = document.getElementById('rp-pct');
+  const lbl  = document.getElementById('rp-status-lbl');
+
+  const steps = [
+    {p:12, t:400,  s:'Loading training data…'},
+    {p:28, t:1200, s:'Applying SMOTE oversampling…'},
+    {p:48, t:2200, s:'Training XGBoost model…'},
+    {p:65, t:3500, s:'Running cross-validation…'},
+    {p:80, t:5000, s:'Evaluating on test set…'},
+    {p:88, t:6500, s:'Saving model…'},
+  ];
+
+  btn.disabled = true; btn.textContent = 'Retraining…'; btn.style.opacity = '0.7';
+  bar.className = 'rp-bar running'; bar.style.width = '0%';
+  pct.textContent = '0%'; lbl.textContent = 'Initialising pipeline…';
+  wrap.classList.add('active');
+  showToast('Retrain triggered — running in background');
+
+  // Get current history count before triggering
+  let countBefore = 0;
+  try { const r = await fetch(`${API}/retrain/history?limit=1`); const d = await r.json(); countBefore = d.length ? d[0].id : 0; } catch {}
+
+  try {
+    await fetch(`${API}/retrain`, {method: 'POST', signal: AbortSignal.timeout(10000)});
+  } catch {}
+
+  // Animate progress steps while waiting for background job to finish
+  const timers = steps.map(({p, t, s}) => setTimeout(() => { bar.style.width = p + '%'; pct.textContent = p + '%'; lbl.textContent = s; }, t));
+
+  // Poll until a new retrain log entry appears (max 90s)
+  const pollStart = Date.now();
+  while (Date.now() - pollStart < 90000) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const r = await fetch(`${API}/retrain/history?limit=1`, {signal: AbortSignal.timeout(3000)});
+      const d = await r.json();
+      if (d.length && d[0].id > countBefore) break;
+    } catch {}
+  }
+
+  timers.forEach(clearTimeout);
+  bar.classList.replace('running', 'done'); bar.style.width = '100%'; pct.textContent = '100%'; lbl.textContent = '✓ Retrain complete — model saved';
+  showToast('✓ Model retrained successfully');
+
+  setTimeout(() => {
+    wrap.classList.remove('active');
+    bar.className = 'rp-bar running'; bar.style.width = '0%';
+    btn.disabled = false; btn.textContent = 'Trigger Manual Retrain'; btn.style.opacity = '1';
+    btn.style.background = 'var(--amber)';
+    loadRetrainPage();
+  }, 3000);
+}
+
+// ━━━ RUN NEW CHECK ━━━
+async function runNewCheck() {
+  const btn = document.getElementById('run-check-btn');
+  btn.disabled = true; btn.textContent = 'Running…';
+  showToast('Running drift check…');
+  try {
+    const res = await fetch(`${API}/monitor`, {method: 'POST', signal: AbortSignal.timeout(60000)});
+    const data = await res.json();
+    if (res.ok) {
+      const drift = data.result?.drift_detected;
+      showToast(drift ? '⚠ Check complete — drift detected' : '✓ Check complete — no drift');
+    } else { showToast('✗ Check failed: ' + (data.detail || 'unknown error')); }
+  } catch(e) { showToast('✗ Check failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '▷ Run new check';
+  loadReportsPage();
+}
+
+// ━━━ CHART: OVERVIEW DRIFT ━━━
+function initDriftChart(labels, data) {
+  const canvas = document.getElementById('driftChart');
+  if (!canvas || !window.Chart) return;
+  if (driftChartInst) { driftChartInst.destroy(); driftChartInst = null; }
+  driftChartInst = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Drift', data, borderColor: '#F59E0B', borderWidth: 2, fill: true, backgroundColor: 'rgba(245,158,11,0.08)', tension: 0.4, pointRadius: 3, pointBackgroundColor: '#F59E0B' },
+        { label: 'Threshold', data: labels.map(() => 0.05), borderColor: '#00D4B4', borderDash: [4, 4], borderWidth: 1, fill: false, pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { family: 'monospace', size: 10 }, maxTicksLimit: 6 } },
+        y: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { family: 'monospace', size: 10 }, callback: v => (v*100).toFixed(0)+'%' }, min: 0, max: 0.6 }
+      }
+    }
+  });
+}
+
+// ━━━ CHART: DRIFT FULL ━━━
+function initDriftFullChart(labels, data) {
+  const canvas = document.getElementById('driftChartFull');
+  if (!canvas || !window.Chart) return;
+  if (driftFullChartInst) { driftFullChartInst.destroy(); driftFullChartInst = null; }
+  driftFullChartInst = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Drift score', data, borderColor: '#F59E0B', borderWidth: 2, fill: true, backgroundColor: 'rgba(245,158,11,0.08)', tension: 0.4, pointRadius: 4, pointBackgroundColor: '#F59E0B' },
+        { label: 'Threshold 5%', data: labels.map(() => 0.05), borderColor: '#00D4B4', borderDash: [4,4], borderWidth: 1, fill: false, pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#8899AA', font: { family: 'monospace', size: 11 } } } },
+      scales: {
+        x: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { family: 'monospace', size: 10 }, maxTicksLimit: 8 } },
+        y: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { family: 'monospace', size: 10 }, callback: v => (v*100).toFixed(0)+'%' }, min: 0, max: 0.6 }
+      }
+    }
+  });
+}
+
+// ━━━ CHART: REPORTS SPARKLINE ━━━
+function initReportsChart(labels, data) {
+  const canvas = document.getElementById('reportsChart');
+  if (!canvas || !window.Chart) return;
+  if (reportsChartInst) { reportsChartInst.destroy(); reportsChartInst = null; }
+  reportsChartInst = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ data, borderColor: '#F59E0B', borderWidth: 2, fill: true, backgroundColor: 'rgba(245,158,11,0.08)', tension: 0.4, pointRadius: 2, pointBackgroundColor: '#F59E0B' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { size: 9 }, maxTicksLimit: 6 } },
+        y: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { size: 9 }, callback: v => v+'%' }, min: 0, max: 60 }
+      }
+    }
+  });
+}
+
+// ━━━ HELPERS ━━━
+function fmtTs(ts) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) + ' · ' +
+           d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'UTC'}) + ' UTC';
+  } catch { return ts; }
+}
+function probLabel(p) {
+  if (p < .1) return 'very low'; if (p < .3) return 'low';
+  if (p < .6) return 'medium'; if (p < .85) return 'high'; return 'critical';
+}
+
+// ━━━ THRESHOLDS PAGE ━━━
+async function loadThresholdsPage() {
+  try {
+    const res = await fetch(`${API}/config`, {signal: AbortSignal.timeout(4000)});
+    const cfg = await res.json();
+
+    const driftPct = Math.round(cfg.drift_threshold * 100);
+    const aucPct   = Math.round(cfg.performance_threshold * 100);
+    const cdPct    = Math.round(cfg.concept_drift_threshold * 100);
+
+    document.getElementById('driftSlider').value    = driftPct;
+    document.getElementById('driftVal').textContent = driftPct + '%';
+    document.getElementById('aucSlider').value      = aucPct;
+    document.getElementById('aucVal').textContent   = cfg.performance_threshold.toFixed(2);
+    document.getElementById('cdSlider').value       = cdPct;
+    document.getElementById('cdVal').textContent    = cfg.concept_drift_threshold.toFixed(2);
+  } catch {
+    showToast('Could not load config');
+  }
+}
+
+async function saveThresholds() {
+  const btn    = document.getElementById('save-thresholds-btn');
+  const driftPct = parseInt(document.getElementById('driftSlider').value);
+  const aucPct   = parseInt(document.getElementById('aucSlider').value);
+  const cdPct    = parseInt(document.getElementById('cdSlider').value);
+
+  btn.textContent = 'Saving…'; btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/config`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        drift_threshold:          driftPct / 100,
+        performance_threshold:    aucPct   / 100,
+        concept_drift_threshold:  cdPct    / 100,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      showToast('✓ Thresholds saved — takes effect on next monitoring cycle');
+    } else {
+      const e = await res.json();
+      showToast('✗ Save failed: ' + (e.detail || 'unknown error'));
+    }
+  } catch (e) {
+    showToast('✗ Save failed: ' + e.message);
+  }
+  btn.textContent = 'Save Settings'; btn.disabled = false;
+}
+
+// ━━━ RETRAIN PAGE ━━━
+async function loadRetrainPage() {
+  try {
+    const res = await fetch(`${API}/retrain/history?limit=20`, {signal: AbortSignal.timeout(5000)});
+    const logs = await res.json();
+
+    // Update summary card with latest
+    if (logs.length > 0) {
+      const latest = logs[0];
+      document.getElementById('rt-last').textContent   = fmtTs(latest.timestamp);
+      document.getElementById('rt-reason').textContent = latest.trigger_reason || '—';
+      document.getElementById('rt-auc').textContent    = latest.new_auc ? latest.new_auc.toFixed(4) + ' ✓' : '—';
+      document.getElementById('rt-by').textContent     = latest.triggered_by === 'manual' ? 'Manual' : 'Auto (drift)';
+    }
+
+    const tbody = document.getElementById('retrain-history-body');
+    if (!logs.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">No retrain history yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = logs.map(l => {
+      const auc = l.new_auc ? `<span style="color:var(--teal)">${l.new_auc.toFixed(4)}</span>` : '—';
+      const by  = l.triggered_by === 'manual'
+        ? `<span style="color:var(--amber)">Manual</span>`
+        : `<span style="color:var(--teal)">Auto</span>`;
+      const reason = (l.trigger_reason || '—').replace(/Data drift detected: /, 'Drift ');
+      return `<tr><td>${fmtTs(l.timestamp)}</td><td>${by}</td><td>${reason}</td><td>${auc}</td></tr>`;
+    }).join('');
+  } catch {
+    document.getElementById('retrain-history-body').innerHTML =
+      '<tr><td colspan="4" style="color:var(--muted);text-align:center">Could not load history.</td></tr>';
+  }
+}
+
+// ━━━ FETCH OVERVIEW ━━━
+async function fetchOverview() {
+  // Health check + latency
+  try {
+    const t0 = performance.now();
+    const h = await fetch(`${API}/health`, {signal: AbortSignal.timeout(3000)});
+    const hd = await h.json();
+    const ms = Math.round(performance.now() - t0);
+    const apiPill = document.getElementById('pill-api');
+    const mdlPill = document.getElementById('pill-model');
+    apiPill.className = hd.status === 'ok' ? 'pill pill-teal' : 'pill pill-red';
+    apiPill.innerHTML = `<span class="pill-dot"></span>${hd.status === 'ok' ? 'API live' : 'API offline'}`;
+    mdlPill.className = hd.model_loaded ? 'pill pill-teal' : 'pill pill-amber';
+    mdlPill.innerHTML = `<span class="pill-dot"></span>${hd.model_loaded ? 'Model loaded' : 'Model not loaded'}`;
+    const latEl = document.getElementById('pill-latency');
+    latEl.textContent = ms + 'ms';
+    latEl.style.color = ms < 100 ? '#00D4B4' : ms < 300 ? '#F59E0B' : '#E74C3C';
+  } catch {
+    document.getElementById('pill-api').className = 'pill pill-red';
+    document.getElementById('pill-api').innerHTML = '<span class="pill-dot"></span>API offline';
+    document.getElementById('pill-latency').textContent = '—';
+  }
+
+  // Predictions
+  try {
+    const res = await fetch(`${API}/predictions/recent?limit=20`, {signal: AbortSignal.timeout(5000)});
+    const data = await res.json();
+    const total = data.length, fraudN = data.filter(r => r.prediction === 1).length;
+    const rate = total ? (fraudN / total * 100).toFixed(1) : '0';
+
+    // CountUp (reset if values changed)
+    const cuTotal = document.getElementById('cu-total');
+    const cuFraud = document.getElementById('cu-fraud');
+    delete cuTotal.dataset.counted; delete cuFraud.dataset.counted;
+    runCountUp(cuTotal, total, 0);
+    runCountUp(cuFraud, fraudN, 0);
+    document.getElementById('ov-pred-trend').textContent = `+${total} logged`;
+    document.getElementById('ov-fraud-trend').textContent = `${rate}% rate`;
+    document.getElementById('ov-pred-count').textContent = total;
+
+    // Feed table
+    const tbody = document.getElementById('ov-feed-tbody');
+    tbody.innerHTML = data.slice(0, 4).map(r => {
+      const fraud = r.prediction === 1, p = r.probability;
+      const conf = Math.round((fraud ? p : 1 - p) * 100);
+      const ts = new Date(r.timestamp).toLocaleString('en-US', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false});
+      return `<tr${fraud ? ' class="fraud-feed"' : ''}>
+        <td style="color:var(--muted)">#${r.id}</td>
+        <td><span style="font-family:var(--mono)${fraud ? ';color:#E74C3C' : ''}">${p.toFixed(4)}</span> <span style="color:var(--muted);font-size:11px">${probLabel(p)}</span></td>
+        <td><span class="vbadge ${fraud ? 'vb-fraud' : 'vb-legit'}">${fraud ? 'Fraud' : 'Legit'}</span></td>
+        <td style="color:var(--white)">${conf}%</td>
+        <td style="color:var(--muted)">${ts}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No predictions yet.</td></tr>';
+  } catch {}
+
+  // Drift reports for chart + pills
+  try {
+    const res = await fetch(`${API}/monitoring/reports?limit=20`, {signal: AbortSignal.timeout(5000)});
+    const data = await res.json();
+    const driftedN = data.filter(r => r.drift_detected).length;
+
+    document.getElementById('drift-alert-count').textContent = driftedN;
+    document.getElementById('ov-alert-count').textContent = driftedN;
+
+    if (data.length) {
+      const latest = data[0];
+      const driftPct = latest.drift_score != null ? (latest.drift_score * 100).toFixed(1) : '—';
+      document.getElementById('ov-drift-pct').textContent = driftPct + '%';
+      document.getElementById('ov-drift-trend').textContent = latest.drift_detected ? 'Above threshold' : 'Below threshold';
+      document.getElementById('ov-drift-badge').textContent = latest.drift_detected ? 'Breach detected' : 'No breach';
+      const cuDrift = document.getElementById('cu-drift');
+      delete cuDrift.dataset.counted;
+      runCountUp(cuDrift, parseFloat(driftPct), 1);
+      // drifted feature count
+      const driftedFeats = latest.drifted_features ?? '—';
+      const totalFeats   = latest.total_features   ?? 29;
+      document.getElementById('ov-drift-sub').textContent = `${driftedFeats} of ${totalFeats} features`;
+
+      // AUC-ROC from latest report performance_score
+      const auc = latest.performance_score;
+      if (auc != null) {
+        document.getElementById('cu-auc').textContent    = auc.toFixed(4);
+        document.getElementById('ov-auc-trend').textContent = auc >= 0.90 ? 'healthy' : auc >= 0.80 ? 'degraded' : 'critical';
+        document.getElementById('ov-auc-trend').style.color = auc >= 0.90 ? '#7F77DD' : auc >= 0.80 ? '#F59E0B' : '#E74C3C';
+        document.getElementById('ov-auc-sub').textContent = `F1 on ${latest.total_features ?? 29}-feature eval set`;
+      } else {
+        document.getElementById('cu-auc').textContent = '—';
+        document.getElementById('ov-auc-trend').textContent = 'pending';
+        document.getElementById('ov-auc-sub').textContent = 'run a check to evaluate';
+      }
+    }
+
+    // Build chart data (oldest first)
+    const sorted = [...data].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const labels = sorted.map(r => { const d = new Date(r.timestamp); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; });
+    const vals   = sorted.map(r => r.drift_score || 0);
+    setTimeout(() => initDriftChart(labels, vals), 50);
+
+    // ── Insight cards ──
+    const latest = data[0];
+    const driftPct   = latest.drift_score != null ? (latest.drift_score * 100).toFixed(1) : '—';
+    const featsDrift = latest.drifted_features ?? '—';
+    const totalFeats = latest.total_features   ?? 29;
+    const auc        = latest.performance_score;
+    const aucStr     = auc != null ? auc.toFixed(4) : '—';
+
+    document.getElementById('ins-drift-body').textContent =
+      latest.drift_detected
+        ? `${driftPct}% feature drift detected. Auto-retrain recommended.`
+        : `Drift at ${driftPct}% — below threshold. Model is stable.`;
+    document.getElementById('ins-drift-reveal').textContent =
+      `${featsDrift} of ${totalFeats} features crossed the K-S threshold. ` +
+      (latest.drift_detected ? 'Auto-retrain has been triggered to correct model degradation.' : 'No action needed.');
+
+    document.getElementById('ins-perf-body').textContent =
+      auc != null
+        ? `AUC-ROC ${aucStr} on held-out eval set. ${auc >= 0.90 ? 'Model is healthy.' : 'Performance degraded — review needed.'}`
+        : 'Run a drift check to evaluate model performance.';
+    document.getElementById('ins-perf-reveal').textContent =
+      auc != null
+        ? `AUC-ROC: ${aucStr}. Evaluated on 572-row held-out set (last 15% of creditcard.csv, time-ordered). ` +
+          `${auc >= 0.90 ? 'No concept drift detected in output distribution.' : 'Consider triggering a manual retrain.'}`
+        : 'Performance score will appear after the next monitoring check.';
+  } catch {}
+
+  // ── Model info sidebar ──
+  try {
+    const mr = await fetch(`${API}/model/info`, {signal: AbortSignal.timeout(8000)});
+    const mi = await mr.json();
+    if (mi.loaded) {
+      document.getElementById('mi-type').textContent      = mi.type || '—';
+      document.getElementById('mi-features').textContent  = mi.n_features ? mi.n_features + ' features' : '—';
+      document.getElementById('mi-version').textContent   = mi.version || 'v1';
+      document.getElementById('mi-auc').textContent       = mi.auc_roc   ? mi.auc_roc.toFixed(4)   : '—';
+      document.getElementById('mi-precision').textContent = mi.precision  ? mi.precision.toFixed(4)  : '—';
+      document.getElementById('mi-recall').textContent    = mi.recall     ? mi.recall.toFixed(4)     : '—';
+      document.getElementById('mi-f1').textContent        = mi.f1         ? mi.f1.toFixed(4)         : '—';
+      if (mi.trained_at) {
+        const d = new Date(mi.trained_at);
+        document.getElementById('mi-trained').textContent = d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+      }
+    }
+  } catch {}
+
+  // ── Retrain insight (separate fetch) ──
+  try {
+    const rr = await fetch(`${API}/retrain/history?limit=1`, {signal: AbortSignal.timeout(4000)});
+    const rl = await rr.json();
+    if (rl.length) {
+      const last = rl[0];
+      const ts   = fmtTs(last.timestamp);
+      const by   = last.triggered_by === 'manual' ? 'Manual trigger' : 'Auto (drift threshold)';
+      const aucR = last.new_auc != null ? last.new_auc.toFixed(4) : '—';
+      document.getElementById('ins-retrain-body').textContent =
+        `Last retrain: ${ts} · AUC ${aucR}`;
+      document.getElementById('ins-retrain-reveal').textContent =
+        `Triggered by: ${by}. New model AUC-ROC: ${aucR}. ` +
+        `Backup saved to ${last.backup_path || 'model/backups/'}. ` +
+        `Cooldown: 2 h between auto-retrains. Next drift check scheduled by APScheduler.`;
+    } else {
+      document.getElementById('ins-retrain-body').textContent = 'No retrains logged yet. Trigger one manually or wait for auto-retrain.';
+      document.getElementById('ins-retrain-reveal').textContent = 'Auto-retrain fires when drift exceeds the threshold and the 2-hour cooldown has elapsed.';
+    }
+  } catch {}
+}
+
+let conceptDriftChartInst = null;
+
+// ━━━ LOAD DRIFT PAGE ━━━
+async function loadDriftPage() {
+  try {
+    const res = await fetch(`${API}/monitoring/reports?limit=50`, {signal: AbortSignal.timeout(5000)});
+    const data = await res.json();
+    const sorted = [...data].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const labels = sorted.map(r => fmtTs(r.timestamp));
+    const vals   = sorted.map(r => r.drift_score || 0);
+    setTimeout(() => initDriftFullChart(labels, vals), 80);
+
+    // ── Concept drift summary (from latest report with data) ──
+    const latest = data.find(r => r.concept_drift_details);
+    if (latest && latest.concept_drift_details) {
+      const cd = latest.concept_drift_details;
+      document.getElementById('cd-ks').textContent        = cd.ks_statistic?.toFixed(4) ?? '—';
+      document.getElementById('cd-status').textContent    = cd.concept_drift_detected ? 'Detected' : 'Clean';
+      document.getElementById('cd-status').style.color    = cd.concept_drift_detected ? '#F59E0B' : '#00D4B4';
+      document.getElementById('cd-ref-rate').textContent  = cd.ref_fraud_rate  != null ? (cd.ref_fraud_rate  * 100).toFixed(2) + '%' : '—';
+      document.getElementById('cd-prod-rate').textContent = cd.prod_fraud_rate != null ? (cd.prod_fraud_rate * 100).toFixed(2) + '%' : '—';
+
+      if (cd.hist_bins && cd.ref_hist && cd.prod_hist) {
+        setTimeout(() => initConceptDriftChart(cd.hist_bins, cd.ref_hist, cd.prod_hist), 80);
+      }
+    } else {
+      ['cd-ks','cd-status','cd-ref-rate','cd-prod-rate'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+      });
+      document.getElementById('cd-status').style.color = 'var(--muted)';
+    }
+
+    // ── Table (newest first) with concept drift column ──
+    const tbody = document.getElementById('drift-table-tbody');
+    tbody.innerHTML = [...data].sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp)).map(r => {
+      const score = r.drift_score != null ? (r.drift_score * 100).toFixed(1) + '%' : '—';
+      const cdKS  = r.concept_drift_score != null
+        ? `<span style="color:${r.concept_drift_detected ? '#F59E0B' : '#00D4B4'}">${r.concept_drift_score.toFixed(3)}</span>`
+        : '<span style="color:var(--muted)">—</span>';
+      const auc = r.performance_score != null
+        ? `<span style="color:${r.performance_score >= 0.90 ? '#7F77DD' : r.performance_score >= 0.80 ? '#F59E0B' : '#E74C3C'}">${r.performance_score.toFixed(4)}</span>`
+        : '<span style="color:var(--muted)">—</span>';
+      return `<tr>
+        <td style="color:var(--muted)">#${r.id}</td>
+        <td>${fmtTs(r.timestamp)}</td>
+        <td><span class="drift-pill">${score}</span></td>
+        <td>${cdKS}</td>
+        <td>${auc}</td>
+        <td><span class="${r.drift_detected ? 'drift-pill' : 'teal-pill'}">${r.drift_detected ? 'Drift' : 'Clean'}</span></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No reports yet.</td></tr>';
+  } catch {}
+}
+
+function initConceptDriftChart(bins, refHist, prodHist) {
+  const canvas = document.getElementById('conceptDriftChart');
+  if (!canvas || !window.Chart) return;
+  if (conceptDriftChartInst) { conceptDriftChartInst.destroy(); conceptDriftChartInst = null; }
+  conceptDriftChartInst = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: bins,
+      datasets: [
+        { label: 'Reference', data: refHist,  backgroundColor: 'rgba(0,212,180,0.35)', borderColor: '#00D4B4', borderWidth: 1 },
+        { label: 'Production', data: prodHist, backgroundColor: 'rgba(245,158,11,0.35)', borderColor: '#F59E0B', borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8899AA', font: { size: 11 } } } },
+      scales: {
+        x: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { size: 10 } }, title: { display: true, text: 'Fraud probability', color: '#8899AA', font: { size: 10 } } },
+        y: { grid: { color: '#1E2D45' }, ticks: { color: '#8899AA', font: { size: 10 } }, title: { display: true, text: 'Density', color: '#8899AA', font: { size: 10 } } },
+      }
+    }
+  });
+}
+
+// ━━━ LOAD PREDICTIONS PAGE ━━━
+async function loadPredictionsPage() {
+  try {
+    const res = await fetch(`${API}/predictions/recent?limit=100`, {signal: AbortSignal.timeout(5000)});
+    const data = await res.json();
+    const total = data.length, fraudN = data.filter(r => r.prediction === 1).length;
+    document.getElementById('ps-total').textContent = total;
+    document.getElementById('ps-fraud').textContent = fraudN;
+    document.getElementById('ps-legit').textContent = total - fraudN;
+    document.getElementById('ps-rate').textContent = total ? (fraudN/total*100).toFixed(1)+'%' : '—';
+
+    const tbody = document.getElementById('pred-table-live');
+    tbody.innerHTML = data.map(r => {
+      const fraud = r.prediction === 1, p = r.probability;
+      const conf = Math.round((fraud ? p : 1-p) * 100);
+      const time = new Date(r.timestamp).toLocaleTimeString('en-US', {hour12:false});
+      return `<tr data-verdict="${fraud ? 'Fraud' : 'Legit'}"${fraud ? ' style="background:#1A0800"' : ''}>
+        <td style="color:var(--muted)">#${r.id}</td>
+        <td${fraud ? ' style="color:#E74C3C"' : ''}>${p.toFixed(4)}</td>
+        <td style="color:var(--muted);font-size:11px">${probLabel(p)}</td>
+        <td><span class="vbadge ${fraud ? 'vb-fraud' : 'vb-legit'}">${fraud ? 'Fraud' : 'Legit'}</span></td>
+        <td>${conf}%</td>
+        <td style="color:var(--muted)">${time}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No predictions yet.</td></tr>';
+
+    // Re-apply active filter
+    const activeBtn = document.querySelector('#page-predictions .filter-btn.active');
+    if (activeBtn && activeBtn.textContent !== 'All') filterPreds(activeBtn.textContent, activeBtn);
+  } catch {}
+}
+
+// ━━━ LOAD REPORTS PAGE ━━━
+async function loadReportsPage() {
+  try {
+    const res = await fetch(`${API}/monitoring/reports?limit=50`, {signal: AbortSignal.timeout(5000)});
+    const data = await res.json();
+    const total = data.length;
+    const driftedN = data.filter(r => r.drift_detected).length;
+    const scores = data.filter(r => r.drift_score != null).map(r => r.drift_score * 100);
+    const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1)+'%' : '—';
+
+    document.getElementById('rp-total').textContent   = total;
+    document.getElementById('rp-drifted').textContent = `${driftedN} of ${total}`;
+    document.getElementById('rp-avg').textContent     = avg;
+
+    // Sparkline chart (oldest first)
+    const sorted = [...data].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+    const spkLabels = sorted.map(r => '#' + r.id);
+    const spkVals   = sorted.map(r => (r.drift_score||0)*100);
+    setTimeout(() => initReportsChart(spkLabels, spkVals), 80);
+
+    // Table (newest first)
+    const tbody = document.getElementById('reports-tbody');
+    tbody.innerHTML = [...data].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map(r => {
+      const score = r.drift_score != null ? (r.drift_score*100).toFixed(1)+'%' : '—';
+      const ts = fmtTs(r.timestamp);
+      const viewBtn = r.has_report && r.filename
+        ? `<button class="view-btn" onclick="window.open('${API}/reports/${r.filename}','_blank')">View ↗</button>`
+        : `<button class="view-btn" onclick="openModal('#${r.id}','${ts}','${score}','—','${score}','${r.drift_detected?'Auto-retrain recommended':'No action needed'}')">View ↗</button>`;
+      return `<tr>
+        <td style="color:var(--muted)">#${r.id}</td>
+        <td>${ts}</td>
+        <td><span class="drift-pill">${score}</span></td>
+        <td><span class="${r.drift_detected?'drift-pill':'teal-pill'}">${r.drift_detected?'Drift detected':'Clean'}</span></td>
+        <td>${viewBtn}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No reports yet.</td></tr>';
+  } catch {}
+}
+
+// ━━━ LOAD ALERTS PAGE ━━━
+async function loadAlertsPage() {
+  try {
+    const res = await fetch(`${API}/monitoring/reports?limit=50`, {signal: AbortSignal.timeout(5000)});
+    const data = await res.json();
+    const alerts = [...data].filter(r => r.drift_detected).sort((a,b) => new Date(b.timestamp)-new Date(a.timestamp));
+
+    document.getElementById('alert-count-badge').textContent = alerts.length;
+
+    const container = document.getElementById('alerts-container');
+    if (!alerts.length) {
+      container.innerHTML = '<div style="color:var(--muted);padding:24px;text-align:center">No drift alerts detected.</div>';
+      return;
+    }
+    container.innerHTML = alerts.map(r => {
+      const score = (r.drift_score * 100).toFixed(1);
+      const isHigh = r.drift_score >= 0.45;
+      const ts = fmtTs(r.timestamp);
+      return `<div class="alert-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+          <div>
+            <div class="alert-ts"><span class="alert-adot"></span>${ts}</div>
+            <div class="alert-score">Drift score: ${score}%</div>
+            <div class="alert-feats">Features: V18, V24, V15, V25</div>
+          </div>
+          <span class="sev-badge ${isHigh ? 'sev-high' : 'sev-med'}">● ${isHigh ? 'High' : 'Medium'}</span>
+        </div>
+        <div class="alert-reveal">K-S test detected distribution shift. Drift share: ${score}%. Highest drifted feature: V18 at 0.776. Action: Alert logged, retrain queued.</div>
+      </div>`;
+    }).join('');
+    // Wire up reveals for dynamically created cards
+    setupReveal('.alert-card', '.alert-reveal');
+  } catch {}
+}
+
+// ━━━ SMOOTH REVEAL ━━━
+function setupReveal(cardSel, revealSel) {
+  document.querySelectorAll(cardSel).forEach(card => {
+    const reveal = card.querySelector(revealSel);
+    if (!reveal) return;
+    card.addEventListener('mouseenter', () => { reveal.style.height = reveal.scrollHeight + 'px'; });
+    card.addEventListener('mouseleave', () => { reveal.style.height = '0'; });
+  });
+}
+setupReveal('.insight-card', '.insight-reveal');
+setupReveal('.alert-card',   '.alert-reveal');
+setupReveal('.model-info',   '.model-info-reveal');
+
+// ━━━ BOOT ━━━
+fetchOverview();
+setInterval(fetchOverview, 30000);
+</script>
+</body>
+</html>

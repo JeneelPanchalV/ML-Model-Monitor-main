@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "python run.py prod",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Environment
+.env
+!.env.example
+
+# Data — large CSV not tracked; eval.csv and reference.csv are generated
+data/creditcard.csv
+
+# Model artifacts — model.joblib committed so Railway can serve without retraining
+model/backups/
+models/model.joblib
+
+# Database — runtime state
+monitor.db
+
+# Monitoring HTML reports — runtime output
+monitoring_reports/
+monitoring/reports/
+
+# macOS
+.DS_Store
+
+# IDE
+.claude/
+.streamlit/
+data/reference.csv
+data/creditcard.csv
