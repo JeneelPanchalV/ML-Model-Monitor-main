@@ -1,9 +1,8 @@
 🚀 Live Demo: [Live Demo](https://ml-model-monitor.onrender.com)
 
-
-
 # ML Model Monitor
-![Python](https://img.shields.io/badge/Python-3.14-blue)
+
+![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![XGBoost](https://img.shields.io/badge/XGBoost-3.2-orange)
 ![FastAPI](https://img.shields.io/badge/FastAPI-live-green)
 [![Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?logo=render&logoColor=white)](https://ml-model-monitor.onrender.com)
@@ -14,51 +13,75 @@ Built to simulate what a real ML platform team would deploy to keep a live fraud
 
 ---
 
-## What This Project Does
+## What I Built
 
-When a machine learning model is deployed to production, it degrades over time. The real-world data it sees slowly shifts away from what it was trained on — this is called **drift**. Without monitoring, you won't know the model is silently making worse predictions until it causes real business damage.
+This is a full end-to-end MLOps system — not just a model, but the entire infrastructure around keeping a model production-ready over time. Here is everything I designed and implemented:
 
-This system solves that by:
+**Fraud Detection Model**
+Trained an XGBoost classifier on 284,807 real credit card transactions. Handled extreme class imbalance (0.17% fraud rate) using SMOTE oversampling on the training split. Applied StandardScaler to the Amount feature. Achieved AUC-ROC of 0.9993 on a time-ordered held-out eval set.
 
-1. **Continuously serving predictions** via a REST API
-2. **Monitoring every hour** for three types of degradation: data drift, concept drift, and performance drop
-3. **Automatically retraining** the model when a problem is detected
-4. **Visualising everything** in a live dashboard — no manual inspection needed
+**Three-Signal Monitoring Pipeline**
+Built a monitoring engine that runs every 60 minutes and checks three independent signals: data drift across all 29 input features (using the Kolmogorov-Smirnov test via Evidently AI), concept drift in the model output distribution (K-S test on fraud probability scores), and performance degradation against a fixed benchmark eval set. Each signal is independent — catching different failure modes that the others would miss.
+
+**Auto-Retrain Pipeline**
+When monitoring detects a problem, the system automatically backs up the current model, retrains from scratch with SMOTE, evaluates the new model, hot-swaps it into production, and logs everything to the database — all without human intervention. A 2-hour cooldown prevents retrain thrashing.
+
+**Persistent PostgreSQL Backend**
+All prediction logs, monitoring reports, retrain history, and runtime config are stored in a managed PostgreSQL database on Render. Data persists across every deployment and restart.
+
+**7-Page Live Dashboard**
+Built a single-page application in vanilla JavaScript with Chart.js that visualises everything in real time — drift trends, feature-level K-S scores, live prediction feed, full monitoring report history, threshold controls, retrain audit log, and alert severity tracking.
+
+**Production Deployment**
+Dockerised the entire stack and deployed to Render with a managed PostgreSQL instance. The API serves predictions at ~120ms latency. Auto-deploys from GitHub on every push.
+
+---
+
+## The Problem This Solves
+
+Every year, financial institutions lose billions of dollars to credit card fraud. Machine learning models are the frontline defence — but they have a silent enemy: **model decay**.
+
+When a fraud model is deployed to production, the world keeps changing. Fraudsters adapt their attack patterns. Customer spending behaviour shifts with seasons and economic conditions. New card products change transaction distributions. The model, frozen at its training snapshot, slowly becomes blind to these changes — and no one notices until fraud losses spike.
+
+Most teams discover model degradation the wrong way: through business metrics, customer complaints, or a quarterly audit. By then, thousands of fraudulent transactions have already slipped through.
+
+**This project solves that problem with a fully automated monitoring and self-healing pipeline:**
+
+- Detects the moment data distributions start to shift — before model accuracy drops
+- Flags when the model's output behaviour changes, even when inputs look normal
+- Measures real model performance against a fixed benchmark on every cycle
+- Automatically retrains and redeploys the model the moment it degrades past a threshold
+- Gives every stakeholder a live dashboard with zero manual inspection required
+
+---
+
+
+
+## Live Metrics
+
+| Metric | Value |
+|---|---|
+| **Model AUC-ROC** | 0.9993 |
+| **Precision** | 1.00 |
+| **Recall** | 0.98 |
+| **F1 Score** | 0.99 |
+| **Fraud Detection Rate** | 22% |
+| **Features Monitored** | 29 |
+| **API Latency** | ~120ms |
 
 ---
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Docker Compose                            │
-│                                                                  │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────────┐  │
-│  │     API     │   │  Scheduler   │   │      Simulator       │  │
-│  │  FastAPI    │   │ APScheduler  │   │  Streams batches of  │  │
-│  │  port 8000  │   │  every 60min │   │  transactions with   │  │
-│  │             │   │              │   │  incremental drift   │  │
-│  │  /predict   │   │  → monitor   │   └──────────┬───────────┘  │
-│  │  /monitor   │   │  → alert     │              │ POST /predict │
-│  │  /retrain   │   │  → retrain   │              │              │
-│  │  /config    │   │              │              │              │
-│  └──────┬──────┘   └──────┬───────┘              │              │
-│         │                 │                       │              │
-│         └─────────────────┴───────────────────────┘             │
-│                           │                                      │
-│               ┌───────────▼────────────┐                        │
-│               │       monitor.db        │                        │
-│               │   SQLite (shared vol)   │                        │
-│               │                        │                        │
-│               │  • prediction_logs      │                        │
-│               │  • monitoring_reports   │                        │
-│               │  • retrain_logs         │                        │
-│               │  • config_store         │                        │
-│               └────────────────────────┘                        │
-└──────────────────────────────────────────────────────────────────┘
-```
+**Stack:** Python 3.12 · XGBoost · FastAPI · Evidently AI · PostgreSQL · SQLAlchemy · APScheduler · Chart.js · Docker · Render
 
-**Stack:** Python 3.11 · XGBoost · FastAPI · Evidently AI · SQLite · SQLAlchemy · APScheduler · Chart.js · Docker Compose
+| Layer | Component | Details |
+|---|---|---|
+| **API** | FastAPI | Serves predictions, monitoring, retrain, config endpoints on port 8000 |
+| **Scheduler** | APScheduler | Runs full monitoring cycle every 60 minutes automatically |
+| **Dashboard** | 7-page SPA | Chart.js frontend — Overview, Drift, Predictions, Reports, Thresholds, Retrain, Alerts |
+| **Database** | PostgreSQL (Render) | Persists prediction_logs, monitoring_reports, retrain_logs, config_store |
+| **Hosting** | Render | Docker-based deployment with managed PostgreSQL |
 
 ---
 
@@ -66,80 +89,126 @@ This system solves that by:
 
 | Feature | Details |
 |---|---|
-| **Fraud detection model** | XGBoost classifier trained on 284K transactions, AUC-ROC 0.965, 29 PCA features |
-| **Data drift detection** | Kolmogorov–Smirnov test on all input features via Evidently AI; full HTML report saved per cycle |
-| **Concept drift detection** | K-S test comparing reference vs production output probability distributions; tracks fraud rate and mean confidence shifts |
-| **Performance monitoring** | AUC-ROC, precision, recall, and F1 scored against a fixed held-out eval set every monitoring cycle |
-| **Auto-retrain pipeline** | Triggers when drift or AUC crosses threshold; 2-hour cooldown prevents thrashing; each retrain is backed up and logged |
-| **Live dashboard** | 7-page single-page app — Overview, Drift Analysis, Predictions, Reports, Thresholds, Auto-retrain, Alerts |
-| **Runtime config** | Drift, AUC, and concept drift thresholds adjustable from the dashboard with no restart required |
-| **Prediction simulator** | Docker service that continuously streams transactions with slowly increasing feature drift to keep the system exercised |
-| **Model versioning** | Every retrain saves a timestamped backup and logs trigger reason, new AUC, and backup path to the database |
+| **Fraud detection model** | XGBoost classifier trained on 284K transactions, AUC-ROC 0.9993, 29 PCA features |
+| **Data drift detection** | Kolmogorov–Smirnov test on all 29 input features via Evidently AI; full HTML report per cycle |
+| **Concept drift detection** | K-S test comparing reference vs production output probability distributions |
+| **Performance monitoring** | AUC-ROC, precision, recall, and F1 scored against a fixed held-out eval set every cycle |
+| **Auto-retrain pipeline** | Triggers when drift or AUC crosses threshold; 2-hour cooldown; each retrain is backed up and logged |
+| **Live dashboard** | 7-page SPA — Overview, Drift Analysis, Predictions, Reports, Thresholds, Auto-retrain, Alerts |
+| **Runtime config** | Drift, AUC, and concept drift thresholds adjustable from dashboard with no restart required |
+| **Persistent storage** | PostgreSQL on Render — all predictions, reports, and retrain logs persist across deployments |
+| **Model versioning** | Every retrain saves a timestamped backup and logs trigger reason, new AUC, and backup path |
 | **REST API** | Full API for predictions, monitoring, retraining, config, and model metadata |
 
 ---
 
-## Quick Start
+## Quick Start (Local)
 
 **Prerequisites:** Docker and Docker Compose installed.
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/JeneelPanchalV/ML-Model-Monitor-.git
-cd ML-Model-Monitor-
+git clone https://github.com/JeneelPanchalV/ML-Model-Monitor-main.git
+cd ML-Model-Monitor-main
 
 # 2. Add the dataset
 # Download creditcard.csv from https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
 # Place it at: data/creditcard.csv
 
-# 3. Train the initial model
-docker compose run --rm api python model/train.py
-
-# 4. Start all services
+# 3. Start the app
 docker compose up -d
 
-# 5. Open the dashboard
+# 4. Open the dashboard
 open http://localhost:8000
 ```
 
-The first monitoring cycle runs automatically after 60 minutes. To trigger one immediately:
+Trigger a monitoring cycle immediately:
 
 ```bash
 curl -X POST http://localhost:8000/monitor
+```
+
+Simulate predictions:
+
+```bash
+python data/simulate_predictions.py
 ```
 
 ---
 
 ## Dashboard Pages
 
-### Overview
-The home screen. Shows live API and model health pills, a 3D rotating wireframe globe (purely decorative), and four metric cards: total predictions, drift share, fraud caught, and live model AUC-ROC. The three insight cards below update dynamically — current drift status, model performance assessment, and last retrain info. A live feed table shows the 4 most recent predictions.
+### 1. Overview
+The home screen of the monitoring system. Displays live status pills in the top-right corner showing API health, model load state, active drift alerts, and current latency. The centrepiece is a 3D rotating wireframe globe with animated node labels (XGBoost Model, FastAPI Server, Drift Monitor, Alert Engine) representing the live system components.
 
-### Drift Analysis
-Two monitoring signals side by side:
+Below the globe, a scrolling ticker shows real-time stats: predictions monitored, drift percentage, and alerts fired. Four metric cards update every 30 seconds:
+- **Total Predictions** — cumulative count logged to PostgreSQL with a live delta indicator
+- **Drift Share** — percentage of the 29 features currently drifting, with an Above/Below threshold badge
+- **Fraud Caught** — number of high-confidence fraud flags in the current monitoring window
+- **Model AUC-ROC** — live score computed against the held-out eval set, with a health status label
 
-- **Feature drift (data drift)** — line chart of K-S drift score over time vs the 5% threshold. Table shows every monitoring report with drift score, concept drift KS stat, AUC-ROC, and status.
-- **Concept drift** — four stat cards (KS statistic, detection status, reference vs production fraud rate) plus a grouped bar chart comparing the reference and production output probability distributions. This catches cases where input features look fine but model outputs have shifted.
+A data drift over time chart and a feature drift scores bar chart (K-S test per feature, colour-coded red for drifted / teal for stable) sit side by side below the cards. A live prediction feed table at the bottom auto-refreshes showing the most recent transactions.
 
-### Live Predictions
-Full prediction log with probability score, risk label, verdict (Fraud/Legit), and confidence. Filter buttons to view All / Fraud only / Legit only. Four summary stats: total, fraud count, legit count, fraud rate.
+---
 
-### Monitoring Reports
-Sparkline chart of all drift scores over time, plus a table with a **View ↗** button on every row — clicking opens the full Evidently AI HTML report (interactive feature-by-feature drift breakdown) in a new tab.
+### 2. Drift Analysis
+A dedicated deep-dive page for understanding model and data health over time. Split into two monitoring signals:
 
-### Thresholds
-Three live sliders:
-- **Drift threshold** (1%–50%) — fraction of features drifted to trigger alert/retrain
-- **Performance threshold** (0.50–0.99) — minimum AUC-ROC before retrain triggers
-- **Concept drift threshold** (0.01–0.50) — KS statistic cutoff for output distribution alert
+**Feature Drift (Data Drift)**
+A line chart plots the K-S drift score for each monitoring cycle against the configurable 5% threshold line. When the drift score breaches the threshold, the chart area turns amber and a Breach Detected badge appears. Below the chart, a full history table lists every monitoring report with columns for timestamp, drift score, drifted feature count, concept drift KS stat, AUC-ROC, and detection status.
 
-Saving writes to the database instantly. The scheduler picks up the new values on its next cycle — no restart needed.
+**Concept Drift — Output Distribution**
+Four stat cards show the KS statistic, detection status, reference fraud rate, and production fraud rate side by side. A grouped bar chart beneath compares the reference and production output probability distributions across 10 bins (0.0 to 1.0). A large gap between the two distributions — especially at the high-probability end — indicates the model is assigning fraud probabilities differently than it did at training time, which is a strong signal of concept drift even when input features appear stable.
 
-### Auto-Retrain
-Summary card showing the last retrain: timestamp, trigger reason, new AUC, and whether it was manual or automatic. Full history table below, colour-coded amber for manual and teal for auto. The **Trigger Manual Retrain** button runs a forced retrain immediately with a progress bar that polls until the background job completes.
+---
 
-### Alerts
-All monitoring cycles where drift was detected, sorted newest first, with severity badges (High / Medium based on drift score). Hover a card to expand the detail panel.
+### 3. Live Predictions
+The full prediction log streamed from the inference server. Four summary cards at the top show total predictions, fraud count, legit count, and fraud rate. Three filter buttons (All / Fraud / Legit) instantly filter the table below.
+
+Each row in the table shows:
+- **#** — prediction sequence number
+- **Probability** — raw fraud probability score from the model (0.0 to 1.0)
+- **Label** — risk tier (very low / low / medium / high / critical) based on probability bands
+- **Verdict** — Fraud (red badge) or Legit (green badge)
+- **Confidence** — how certain the model is, expressed as a percentage
+- **Time** — timestamp of the prediction
+
+High-probability fraud rows are highlighted in dark red for instant visual identification.
+
+---
+
+### 4. Monitoring Reports
+An audit trail of every drift analysis cycle run by the system. A sparkline chart at the top shows drift scores across all historical reports at a glance. Three summary cards show total reports generated, how many detected drift, and the average drift score.
+
+The main table lists every report with date, time, drift score badge, and status. Each row has a **View** button that opens the full interactive Evidently AI HTML report in a new tab — this report contains per-feature histograms, K-S statistics, p-values, and distribution comparisons for all 29 features. A **Run New Check** button in the top-right triggers an immediate monitoring cycle without waiting for the scheduler.
+
+---
+
+### 5. Thresholds
+Runtime configuration page for all three monitoring thresholds. No restart or redeploy is needed — changes are written to PostgreSQL immediately and the scheduler picks them up on its next cycle.
+
+Three sliders:
+- **Drift Threshold (1%–50%)** — fraction of features that must drift before an alert is fired and retrain is considered. Default: 5%
+- **Performance Threshold (0.50–0.99)** — minimum AUC-ROC below which a retrain is triggered. Default: 0.80
+- **Concept Drift Threshold (0.01–0.50)** — KS statistic cutoff for flagging output distribution shift. Default: 0.10
+
+Current values are loaded from the database on page open. A Save button writes all three values atomically. The page also shows the current live values returned by `GET /config` so you can confirm the update took effect.
+
+---
+
+### 6. Auto-Retrain
+Visibility into the automated retraining pipeline. A summary card at the top shows the most recent retrain event: timestamp, trigger reason (drift / performance / manual), new AUC-ROC achieved, and whether it was triggered automatically by the scheduler or manually via the dashboard.
+
+The full retrain history table below is colour-coded — amber rows for manual retrains, teal for automatic. Each row shows the trigger reason, new AUC, backup file path, triggered-by field, status, and timestamp.
+
+A **Trigger Manual Retrain** button forces an immediate retrain regardless of cooldown or threshold state. A progress bar polls the backend every 2 seconds until the background job completes, then refreshes the history table automatically.
+
+---
+
+### 7. Alerts
+A chronological log of all monitoring cycles where drift or performance thresholds were breached. Cards are sorted newest first and colour-coded by severity — High (drift score above 50%) and Medium (drift score above threshold but below 50%).
+
+Each alert card shows the timestamp, drift score, number of drifted features, concept drift status, and AUC-ROC at the time of detection. Hovering a card expands a detail panel with the full breakdown. This page gives a quick audit view of how often the system has flagged issues and whether they are increasing or decreasing over time.
 
 ---
 
@@ -147,96 +216,53 @@ All monitoring cycles where drift was detected, sorted newest first, with severi
 
 Every 60 minutes the scheduler runs a full monitoring cycle:
 
-```
-APScheduler fires
-    │
-    ▼
-run_monitoring_cycle()
-    │
-    ├─ 1. DATA DRIFT (Evidently AI)
-    │      Load reference.csv + last 1000 production predictions
-    │      Run K-S test on all 29 input features
-    │      Save HTML report to monitoring_reports/
-    │      → drift_score = fraction of features that drifted
-    │
-    ├─ 2. CONCEPT DRIFT
-    │      Compare reference prediction_proba distribution
-    │      vs last 1000 production probability scores
-    │      K-S test on the two distributions
-    │      → concept_drift_score = KS statistic
-    │
-    ├─ 3. PERFORMANCE CHECK
-    │      Load data/eval.csv (fixed 572-row held-out set)
-    │      Run current model, compute AUC-ROC, precision, recall, F1
-    │      → performance_score = AUC-ROC
-    │
-    └─ 4. Save everything to monitoring_reports table in DB
-    │
-    ▼
-check_and_alert()
-    └─ Send email if drift or performance threshold breached
-    │
-    ▼
-drift_detected AND cooldown elapsed (2h)?
-    ├── No  → done
-    └── Yes → retrain()
-                  ├── Backup current model with timestamp
-                  ├── Combine reference.csv + last 5000 prediction logs
-                  ├── SMOTE oversampling to handle class imbalance
-                  ├── Train new XGBoost (200 estimators, depth 6)
-                  ├── Evaluate on test split, log new AUC
-                  ├── Save to models/model.joblib (API hot-reloads on file change)
-                  ├── Update reference.csv with new training data
-                  └── Write to retrain_logs table
-```
+**Step 1 — Data Drift (Evidently AI)**
+Load reference.csv and the last 1000 production predictions. Run K-S test on all 29 input features. Save HTML report. drift_score = fraction of features that drifted.
 
----
+**Step 2 — Concept Drift**
+Compare reference prediction_proba distribution vs last 1000 production probability scores using K-S test. concept_drift_score = KS statistic.
 
-## Drift Explained
+**Step 3 — Performance Check**
+Load data/eval.csv (fixed held-out set). Run current model, compute AUC-ROC, precision, recall, F1. performance_score = AUC-ROC.
 
-**Data drift** (input drift) — the statistical distribution of input features changes. For example, transaction amounts or PCA-transformed card behaviour patterns shift because of seasonality, a new product launch, or a change in fraud attack patterns. Detected using the Kolmogorov–Smirnov test on each of the 29 features. Evidently AI produces a full HTML report with per-feature histograms and K-S statistics.
+**Step 4 — Save to PostgreSQL**
+All results written to monitoring_reports table.
 
-**Concept drift** (output drift) — the relationship between inputs and the correct output changes, or the model's output distribution shifts. Even if input features look the same, the model might start assigning different probability scores to similar transactions. This project detects it by comparing the distribution of fraud probability scores from the reference period against recent production scores using a K-S test. A shift here often precedes a drop in real-world accuracy.
+**Step 5 — Alert**
+Fire alert if drift or performance threshold is breached.
 
-**Performance degradation** — measured directly against a fixed held-out test set (`data/eval.csv`) that was never used in training. This gives a ground-truth signal about whether the model is still accurate, independent of what the production labels are.
-
----
-
-## The Eval Set
-
-`data/eval.csv` is the last 15% of `creditcard.csv` sorted by transaction time — a true time-ordered hold-out that was never touched during training or used as reference data. It contains 572 rows with 52 fraud cases (9.1%). Because it is fixed and never updated (unlike `reference.csv` which is refreshed after each retrain), it provides a stable, unbiased performance benchmark across all model versions.
+**Step 6 — Retrain (if needed)**
+If drift detected and 2-hour cooldown has elapsed: backup current model, combine reference + last 5000 prediction logs, SMOTE oversampling, train new XGBoost (200 estimators, depth 6), evaluate, save to models/model.joblib (API hot-reloads), write to retrain_logs.
 
 ---
 
 ## Project Structure
 
 ```
-ml-model-monitor/
+ML-Model-Monitor-main/
 ├── model/
-│   ├── train.py              # Initial training — StandardScaler, SMOTE, XGBoost, 80/20 split
-│   └── backups/              # Timestamped model snapshots saved before each retrain
+│   ├── train.py                  # Training — StandardScaler, SMOTE, XGBoost
+│   └── generate_reference.py     # Generates synthetic reference data from model
 ├── models/
-│   └── model.joblib          # Active production model (API hot-reloads on file change)
+│   └── model.joblib              # Active production model
 ├── serving/
-│   ├── app.py                # FastAPI app — all endpoints, model loading, hot-reload
-│   └── database.py           # SQLAlchemy ORM models + runtime config helpers
+│   ├── app.py                    # FastAPI app — all endpoints
+│   └── database.py               # SQLAlchemy ORM + PostgreSQL config
 ├── monitoring/
-│   ├── monitor.py            # Data drift (Evidently) + concept drift (K-S) + performance (AUC)
-│   └── scheduler.py          # APScheduler — runs cycle, triggers alerts and retrain
+│   ├── monitor.py                # Drift + concept drift + performance monitoring
+│   └── scheduler.py              # APScheduler — runs cycle, alerts, retrain
 ├── retrain/
-│   └── retrain.py            # Full retrain pipeline — cooldown check, SMOTE, backup, DB log
+│   └── retrain.py                # Full retrain pipeline
 ├── alerting/
-│   └── alerts.py             # Email alerts via SMTP — configurable in .env
+│   └── alerts.py                 # Email alerts via SMTP
 ├── data/
-│   ├── creditcard.csv        # Source dataset (not committed — download from Kaggle)
-│   ├── reference.csv         # Reference distribution — updated after each retrain
-│   ├── eval.csv              # Fixed held-out eval set — never updated
-│   └── stream_predictions.py # Simulator script — sends batches with incremental drift
+│   ├── creditcard.csv            # Source dataset (not committed — download from Kaggle)
+│   ├── eval.csv                  # Fixed held-out eval set
+│   └── simulate_predictions.py   # Sends batches of predictions to the API
 ├── dashboard/
-│   └── index.html            # 7-page SPA — Chart.js, all data from live API
-├── config.py                 # Env-based config with DB override support
-├── docker-compose.yml        # api · scheduler · simulator · dashboard services
-├── Dockerfile                # Single image used by all services
+│   └── index.html                # 7-page SPA — Chart.js
+├── config.py                     # Env-based config
+├── Dockerfile                    # Docker image
 └── requirements.txt
 ```
 
@@ -246,61 +272,57 @@ ml-model-monitor/
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Returns API status and whether model is loaded |
-| `POST` | `/predict` | Run fraud inference — pass `features` array of 29 floats |
-| `GET` | `/predictions/recent?limit=N` | Last N prediction logs from the database |
-| `GET` | `/monitoring/reports?limit=N` | Full monitoring history with drift, concept drift, AUC, filenames |
-| `POST` | `/monitor` | Trigger a full monitoring cycle immediately (synchronous) |
-| `GET` | `/retrain/history?limit=N` | Retrain event log — AUC, trigger reason, backup path, timestamp |
-| `POST` | `/retrain` | Force a manual retrain in the background |
-| `GET` | `/model/info` | Live model metadata — type, version, trained date, AUC, precision, recall, F1 |
-| `GET` | `/config` | Current runtime thresholds (drift, AUC, concept drift) |
-| `PATCH` | `/config` | Update thresholds at runtime — persisted to DB, no restart needed |
-| `GET` | `/reports` | List all Evidently HTML report filenames |
-| `GET` | `/reports/{filename}` | Serve a specific Evidently HTML drift report |
+| `GET` | `/health` | API status and model loaded state |
+| `POST` | `/predict` | Run fraud inference — pass features array of 29 floats |
+| `GET` | `/predictions/recent?limit=N` | Last N prediction logs |
+| `GET` | `/monitoring/reports?limit=N` | Full monitoring history |
+| `POST` | `/monitor` | Trigger a full monitoring cycle immediately |
+| `GET` | `/retrain/history?limit=N` | Retrain event log |
+| `POST` | `/retrain` | Force a manual retrain |
+| `GET` | `/model/info` | Live model metadata — AUC, precision, recall, F1 |
+| `GET` | `/config` | Current runtime thresholds |
+| `PATCH` | `/config` | Update thresholds at runtime |
+| `GET` | `/reports/{filename}` | Serve Evidently HTML drift report |
 
 ### Example: run a prediction
 
 ```bash
-curl -X POST http://localhost:8000/predict \
+curl -X POST https://ml-model-monitor.onrender.com/predict \
   -H "Content-Type: application/json" \
   -d '{"features": [-1.36, -0.07, 2.54, 1.38, -0.34, 0.46, 0.24, 0.09, 0.36, 0.09,
                     -0.55, -0.62, -0.99, -0.31, 1.47, -0.47, 0.21, 0.02, 0.40, 0.25,
                     -0.02, 0.28, -0.11, 0.07, 0.13, -0.19, 0.13, -0.02, 0.15]}'
 ```
 
+### Example: trigger monitoring
+
+```bash
+curl -X POST https://ml-model-monitor.onrender.com/monitor
+```
+
 ### Example: update thresholds
 
 ```bash
-curl -X PATCH http://localhost:8000/config \
+curl -X PATCH https://ml-model-monitor.onrender.com/config \
   -H "Content-Type: application/json" \
-  -d '{"drift_threshold": 0.10, "performance_threshold": 0.85, "concept_drift_threshold": 0.15}'
+  -d '{"drift_threshold": 0.10, "performance_threshold": 0.85}'
 ```
 
 ---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in values:
+Copy `.env.example` to `.env`:
 
 ```env
-# App
 APP_HOST=0.0.0.0
 APP_PORT=8000
-
-# Database
-DATABASE_URL=sqlite:///./monitor.db
-
-# Model paths
+DATABASE_URL=postgresql://user:pass@host/dbname
 MODEL_PATH=models/model.joblib
 REFERENCE_DATA_PATH=data/reference.csv
-
-# Monitoring
 MONITORING_INTERVAL_MINUTES=60
 DRIFT_THRESHOLD=0.05
 PERFORMANCE_THRESHOLD=0.80
-
-# Email alerts (optional — leave blank to disable)
 ALERT_EMAIL=you@example.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -308,15 +330,20 @@ SMTP_USER=you@gmail.com
 SMTP_PASSWORD=your-app-password
 ```
 
-Thresholds set in `.env` are the startup defaults. Once the system is running, use `PATCH /config` or the dashboard Thresholds page to change them at runtime — these values are stored in the database and override the env defaults without requiring a restart or redeploy.
+Thresholds set in `.env` are startup defaults. Once running, use `PATCH /config` or the dashboard Thresholds page to change them at runtime — values are stored in PostgreSQL and override env defaults without a restart.
 
 ---
 
 ## Dataset
 
-[Kaggle Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) — 284,807 European credit card transactions from September 2013, of which 492 (0.17%) are fraudulent.
+[Kaggle Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) — 284,807 European credit card transactions from September 2013, of which 492 (0.17%) are fraudulent. Features V1–V28 are PCA-transformed to protect cardholder privacy. Class imbalance handled with SMOTE during training.
 
-Features V1–V28 are the result of PCA transformation applied to protect cardholder privacy. `Amount` is the transaction amount (standardized during preprocessing). `Time` is dropped. The target label `Class` is 1 for fraud, 0 for legitimate.
+---
 
-The extreme class imbalance (0.17% fraud) is handled during training with SMOTE oversampling on the training split.
-# ML-Model-Monitor
+<div align="center">
+
+**ML Model Monitor** · Built by [Jeneel Panchal](https://github.com/JeneelPanchalV) · Deployed on [Render](https://ml-model-monitor.onrender.com)
+
+![ML Model Monitor](https://img.shields.io/badge/ML%20Model%20Monitor-Production%20MLOps-46E3B7?style=for-the-badge&logo=render&logoColor=white)
+
+</div>
